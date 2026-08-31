@@ -1,0 +1,1052 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>Tooling Requests</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f2f4f7;
+      color: #1a1a2e;
+      min-height: 100vh;
+    }
+
+    .view { display: none; }
+    .view.active { display: block; }
+
+    /* ── Header ── */
+    header {
+      background: #1a1a2e;
+      color: #fff;
+      padding: 16px 14px 14px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+    }
+
+    .header-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 4px;
+    }
+
+    header h1 { font-size: 18px; font-weight: 700; }
+    header p  { font-size: 12px; color: #888aaa; }
+
+    .staff-btn {
+      background: #2e2e4a;
+      border: none;
+      color: #666;
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      letter-spacing: 0.3px;
+    }
+
+    .back-btn {
+      background: #2e2e4a;
+      border: none;
+      color: #aaa;
+      padding: 8px 13px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .header-right { display: flex; gap: 8px; align-items: center; }
+
+    .staff-badge {
+      background: #4f46e5;
+      color: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 20px;
+      letter-spacing: 0.3px;
+    }
+
+    /* ── List & Grid ── */
+    .page-content { padding: 14px 12px; }
+
+    .section-title {
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #aaa;
+      margin-bottom: 10px;
+    }
+
+    .super-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .super-card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 18px 14px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.07);
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      transition: transform 0.1s;
+      text-align: center;
+    }
+
+    .super-card:active { transform: scale(0.96); }
+
+    .super-initial {
+      width: 48px;
+      height: 48px;
+      background: #1a1a2e;
+      color: #fff;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      font-weight: 700;
+      margin: 0 auto 10px;
+    }
+
+    .super-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: #1a1a2e;
+      line-height: 1.3;
+    }
+
+    /* ── Tool list ── */
+    .tool-list { display: flex; flex-direction: column; gap: 8px; }
+
+    .tool-card {
+      background: #fff;
+      border-radius: 10px;
+      padding: 14px 14px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.07);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      transition: transform 0.1s;
+    }
+
+    .tool-card:active { transform: scale(0.985); }
+    .tool-card.unavailable { opacity: 0.5; cursor: not-allowed; }
+
+    .tool-card-left { flex: 1; min-width: 0; }
+
+    .tool-card-name {
+      font-size: 15px;
+      font-weight: 600;
+      color: #1a1a2e;
+      margin-bottom: 3px;
+    }
+
+    .tool-card-sub {
+      font-size: 12px;
+      color: #888;
+    }
+
+    .avail-badge {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 20px;
+      flex-shrink: 0;
+      margin-left: 10px;
+    }
+
+    .avail-green  { background: #d1fae5; color: #065f46; }
+    .avail-yellow { background: #fef3c7; color: #92400e; }
+    .avail-red    { background: #fee2e2; color: #991b1b; }
+
+    /* ── Staff tool list ── */
+    .staff-tool-card {
+      background: #fff;
+      border-radius: 10px;
+      padding: 13px 14px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.07);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      transition: transform 0.1s;
+    }
+
+    .staff-tool-card:active { transform: scale(0.985); }
+
+    .staff-tool-left { flex: 1; min-width: 0; }
+
+    .staff-tool-name {
+      font-size: 14px;
+      font-weight: 600;
+      color: #1a1a2e;
+    }
+
+    .staff-tool-id {
+      font-size: 11px;
+      color: #aaa;
+      margin-top: 2px;
+    }
+
+    .status-pill {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 3px 9px;
+      border-radius: 20px;
+      flex-shrink: 0;
+      white-space: nowrap;
+    }
+
+    .pill-available  { background: #d1fae5; color: #065f46; }
+    .pill-requested  { background: #fef3c7; color: #92400e; }
+    .pill-checkedout { background: #fee2e2; color: #991b1b; }
+
+    /* ── Filter tabs (staff) ── */
+    .filter-tabs {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+
+    .filter-tab {
+      background: #2e2e4a;
+      border: none;
+      color: #888aaa;
+      padding: 7px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+
+    .filter-tab.active { background: #4f46e5; color: #fff; }
+
+    /* ── Empty / Loading ── */
+    .empty, .loading {
+      text-align: center;
+      color: #999;
+      padding: 48px 16px;
+      font-size: 15px;
+    }
+
+    /* ── Modal ── */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 100;
+      align-items: flex-end;
+    }
+
+    .modal-overlay.active { display: flex; }
+
+    .modal {
+      background: #fff;
+      border-radius: 18px 18px 0 0;
+      width: 100%;
+      max-height: 88vh;
+      overflow-y: auto;
+      padding: 0 16px 36px;
+      position: relative;
+    }
+
+    .modal-top-bar {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 14px 0 10px;
+      position: relative;
+    }
+
+    .modal-handle {
+      width: 40px;
+      height: 4px;
+      background: #ddd;
+      border-radius: 2px;
+    }
+
+    .modal-close {
+      position: absolute;
+      right: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      background: #f2f4f7;
+      border: none;
+      color: #888;
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      font-size: 16px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-title    { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+    .modal-subtitle { font-size: 13px; color: #888; margin-bottom: 20px; }
+
+    .modal-instruction {
+      font-size: 13px;
+      color: #888;
+      margin-bottom: 16px;
+      line-height: 1.4;
+    }
+
+    /* PIN input */
+    .pin-wrap { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 10px 0; }
+
+    .pin-dots { display: flex; gap: 12px; }
+
+    .pin-dot {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #e0e0e0;
+      transition: background 0.15s;
+    }
+
+    .pin-dot.filled { background: #4f46e5; }
+
+    .pin-keypad {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      width: 100%;
+      max-width: 280px;
+    }
+
+    .pin-key {
+      background: #f2f4f7;
+      border: none;
+      border-radius: 10px;
+      padding: 16px;
+      font-size: 20px;
+      font-weight: 600;
+      color: #1a1a2e;
+      cursor: pointer;
+      transition: background 0.1s;
+    }
+
+    .pin-key:active { background: #ddd; }
+    .pin-key.del    { font-size: 16px; color: #888; }
+    .pin-error      { color: #991b1b; font-size: 13px; font-weight: 600; }
+
+    /* Super select (staff) */
+    .super-select-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+
+    .super-select-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px;
+      background: #f8f9fa;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: background 0.1s;
+    }
+
+    .super-select-item:active { background: #e8e8e8; }
+
+    .super-select-initial {
+      width: 38px;
+      height: 38px;
+      background: #1a1a2e;
+      color: #fff;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 15px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    .super-select-name { font-size: 14px; font-weight: 600; }
+
+    /* Name input */
+    .name-input-wrap { margin-bottom: 14px; }
+
+    .name-input-wrap label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #aaa;
+      margin-bottom: 6px;
+    }
+
+    .name-input-wrap input {
+      width: 100%;
+      padding: 13px 12px;
+      border: 1.5px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 15px;
+      outline: none;
+      background: #fff;
+      color: #1a1a2e;
+      -webkit-appearance: none;
+    }
+
+    .name-input-wrap input:focus { border-color: #4f46e5; }
+    .name-input-wrap input::placeholder { color: #bbb; }
+
+    /* Buttons */
+    .btn {
+      width: 100%;
+      padding: 15px;
+      border: none;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-bottom: 8px;
+    }
+
+    .btn:disabled     { opacity: 0.6; }
+    .btn-primary      { background: #4f46e5; color: #fff; }
+    .btn-success      { background: #059669; color: #fff; }
+    .btn-warning      { background: #d97706; color: #fff; }
+    .btn-cancel       { background: #f2f4f7; color: #666; }
+    .btn-success-state { background: #059669; color: #fff; }
+
+    /* ── Toast ── */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      left: 12px;
+      right: 12px;
+      background: #1a1a2e;
+      color: #fff;
+      border-radius: 12px;
+      padding: 14px 16px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+      z-index: 200;
+      cursor: pointer;
+      transform: translateY(120px);
+      opacity: 0;
+      transition: transform 0.3s ease, opacity 0.3s ease;
+    }
+
+    .toast.visible { transform: translateY(0); opacity: 1; }
+
+    .toast-title  { font-size: 14px; font-weight: 700; color: #4ade80; margin-bottom: 4px; }
+    .toast-body   { font-size: 13px; color: #ccc; line-height: 1.4; }
+    .toast-dismiss { font-size: 10px; color: #555; margin-top: 8px; }
+
+    /* ── Staff header variant ── */
+    .staff-header {
+      background: #1a1a2e;
+      padding: 14px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .staff-header h1 { font-size: 17px; font-weight: 700; color: #fff; flex: 1; }
+  </style>
+</head>
+<body>
+
+<!-- ── VIEW: SUPERINTENDENT SELECT (Electrician) ── -->
+<div id="view-super-select" class="view active">
+  <header>
+    <div class="header-top">
+      <div>
+        <h1>Tooling Requests</h1>
+        <p>Select your superintendent</p>
+      </div>
+      <button class="staff-btn" onclick="openPinModal()">Staff</button>
+    </div>
+  </header>
+  <div class="page-content">
+    <div class="section-title">Superintendents</div>
+    <div class="super-grid" id="super-grid">
+      <div class="loading">Loading...</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── VIEW: TOOL LIST (Electrician) ── -->
+<div id="view-tool-list" class="view">
+  <header>
+    <div class="header-top">
+      <div>
+        <h1 id="tool-list-title">Tools</h1>
+        <p>Tap a tool to request it</p>
+      </div>
+      <div class="header-right">
+        <button class="back-btn" onclick="showSuperSelect()">&#8592; Back</button>
+      </div>
+    </div>
+  </header>
+  <div class="page-content">
+    <div class="tool-list" id="tool-list">
+      <div class="loading">Loading...</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── VIEW: STAFF TOOL LIST ── -->
+<div id="view-staff-tools" class="view">
+  <div class="staff-header">
+    <button class="back-btn" onclick="staffBack()">&#8592;</button>
+    <h1 id="staff-title">Staff View</h1>
+    <span class="staff-badge">STAFF</span>
+  </div>
+  <div class="page-content">
+    <div class="filter-tabs" id="staff-filter-tabs">
+      <button class="filter-tab active" data-filter="all"       onclick="setStaffFilter(this)">All</button>
+      <button class="filter-tab"        data-filter="Available" onclick="setStaffFilter(this)">Available</button>
+      <button class="filter-tab"        data-filter="Requested" onclick="setStaffFilter(this)">Requested</button>
+      <button class="filter-tab"        data-filter="Checked Out" onclick="setStaffFilter(this)">Checked Out</button>
+    </div>
+    <div class="tool-list" id="staff-tool-list">
+      <div class="loading">Loading...</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── MODAL: PIN ENTRY ── -->
+<div class="modal-overlay" id="pin-modal" onclick="closePinOnOverlay(event)">
+  <div class="modal">
+    <div class="modal-top-bar">
+      <div class="modal-handle"></div>
+      <button class="modal-close" onclick="closePinModal()">&#x2715;</button>
+    </div>
+    <div class="modal-title">Staff Access</div>
+    <div class="modal-subtitle">Enter your PIN to continue</div>
+    <div class="pin-wrap">
+      <div class="pin-dots" id="pin-dots">
+        <div class="pin-dot" id="dot-0"></div>
+        <div class="pin-dot" id="dot-1"></div>
+        <div class="pin-dot" id="dot-2"></div>
+        <div class="pin-dot" id="dot-3"></div>
+      </div>
+      <div class="pin-error" id="pin-error" style="display:none">Incorrect PIN. Try again.</div>
+      <div class="pin-keypad">
+        <button class="pin-key" onclick="pinKey('1')">1</button>
+        <button class="pin-key" onclick="pinKey('2')">2</button>
+        <button class="pin-key" onclick="pinKey('3')">3</button>
+        <button class="pin-key" onclick="pinKey('4')">4</button>
+        <button class="pin-key" onclick="pinKey('5')">5</button>
+        <button class="pin-key" onclick="pinKey('6')">6</button>
+        <button class="pin-key" onclick="pinKey('7')">7</button>
+        <button class="pin-key" onclick="pinKey('8')">8</button>
+        <button class="pin-key" onclick="pinKey('9')">9</button>
+        <button class="pin-key" onclick="pinKey('0')">0</button>
+        <button class="pin-key del" onclick="pinDelete()">&#9003;</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── MODAL: STAFF SUPER SELECT ── -->
+<div class="modal-overlay" id="staff-super-modal" onclick="closeStaffSuperOnOverlay(event)">
+  <div class="modal">
+    <div class="modal-top-bar">
+      <div class="modal-handle"></div>
+      <button class="modal-close" onclick="closeStaffSuperModal()">&#x2715;</button>
+    </div>
+    <div class="modal-title">Select Superintendent</div>
+    <div class="modal-subtitle">Choose which inventory to manage</div>
+    <div class="super-select-list" id="staff-super-list"></div>
+  </div>
+</div>
+
+<!-- ── MODAL: REQUEST TOOL (Electrician) ── -->
+<div class="modal-overlay" id="request-modal" onclick="closeRequestOnOverlay(event)">
+  <div class="modal">
+    <div class="modal-top-bar">
+      <div class="modal-handle"></div>
+      <button class="modal-close" onclick="closeRequestModal()">&#x2715;</button>
+    </div>
+    <div class="modal-title"    id="request-title"></div>
+    <div class="modal-subtitle" id="request-subtitle"></div>
+    <div class="modal-instruction">Enter your name and tap Request Tool. The material handler will be notified to prepare it for you.</div>
+    <div class="name-input-wrap">
+      <label>Your Name</label>
+      <input type="text" id="request-name"
+        placeholder="Enter your name..."
+        autocomplete="name" autocorrect="off" spellcheck="false" />
+    </div>
+    <button class="btn btn-primary" id="request-btn" onclick="submitRequest()">Request Tool</button>
+    <button class="btn btn-cancel" id="request-cancel" onclick="closeRequestModal()">Cancel</button>
+  </div>
+</div>
+
+<!-- ── MODAL: STAFF ACTION ── -->
+<div class="modal-overlay" id="staff-action-modal" onclick="closeStaffActionOnOverlay(event)">
+  <div class="modal">
+    <div class="modal-top-bar">
+      <div class="modal-handle"></div>
+      <button class="modal-close" onclick="closeStaffActionModal()">&#x2715;</button>
+    </div>
+    <div class="modal-title"    id="staff-action-title"></div>
+    <div class="modal-subtitle" id="staff-action-subtitle"></div>
+    <div class="name-input-wrap">
+      <label id="staff-action-label">Name</label>
+      <input type="text" id="staff-action-name"
+        placeholder="Enter name..."
+        autocomplete="name" autocorrect="off" spellcheck="false" />
+    </div>
+    <button class="btn" id="staff-action-btn" onclick="submitStaffAction()"></button>
+    <button class="btn btn-cancel" id="staff-action-cancel" onclick="closeStaffActionModal()">Cancel</button>
+  </div>
+</div>
+
+<!-- ── TOAST ── -->
+<div class="toast" id="toast" onclick="dismissToast()">
+  <div class="toast-title" id="toast-title"></div>
+  <div class="toast-body"  id="toast-body"></div>
+  <div class="toast-dismiss">Tap to dismiss</div>
+</div>
+
+<script>
+  const SCRIPT_URL = "YOUR_APPS_SCRIPT_URL_HERE";
+
+  // ── State ─────────────────────────────────────────────────────────────────
+  let allSupers        = [];   // [{ name, initials }]
+  let configData       = [];   // [{ superintendent, email, pin }]
+  let currentSuper     = null; // selected superintendent name
+  let currentTools     = [];   // tools for current super
+  let staffSupers      = [];   // supers accessible to logged-in staff
+  let staffFilter      = "all";
+  let currentStaffTool = null; // tool being acted on by staff
+  let pinBuffer        = "";
+  let toastTimer       = null;
+
+  // ── API ───────────────────────────────────────────────────────────────────
+  async function apiFetch(params) {
+    const p = {};
+    for (const [k, v] of Object.entries(params)) p[k] = Array.isArray(v) ? JSON.stringify(v) : v;
+    const res = await fetch(SCRIPT_URL + "?" + new URLSearchParams(p).toString());
+    try { return await res.json(); } catch { return { error: "non-json response" }; }
+  }
+
+  // ── Views ─────────────────────────────────────────────────────────────────
+  function showView(id) {
+    document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
+    document.getElementById(id).classList.add("active");
+    window.scrollTo(0, 0);
+  }
+
+  function showSuperSelect() { showView("view-super-select"); currentSuper = null; }
+
+  // ── Init ──────────────────────────────────────────────────────────────────
+  async function init() {
+    try {
+      const res = await apiFetch({ action: "getConfig" });
+      configData = res.data || [];
+      allSupers  = [...new Set(configData.map(r => r.superintendent))];
+      renderSuperGrid();
+    } catch {
+      document.getElementById("super-grid").innerHTML = `<div class="empty" style="grid-column:span 2">Failed to load. Check connection.</div>`;
+    }
+  }
+
+  function initials(name) {
+    return name.split(" ").map(w => w[0]).join("").substring(0, 2).toUpperCase();
+  }
+
+  function renderSuperGrid() {
+    document.getElementById("super-grid").innerHTML = allSupers.map(name => `
+      <div class="super-card" onclick="selectSuper('${encodeURIComponent(name)}')">
+        <div class="super-initial">${initials(name)}</div>
+        <div class="super-name">${name}</div>
+      </div>`).join("");
+  }
+
+  // ── Electrician: select super ─────────────────────────────────────────────
+  async function selectSuper(encodedName) {
+    currentSuper = decodeURIComponent(encodedName);
+    document.getElementById("tool-list-title").textContent = currentSuper;
+    document.getElementById("tool-list").innerHTML = `<div class="loading">Loading...</div>`;
+    showView("view-tool-list");
+
+    try {
+      const res = await apiFetch({ action: "getTools", superintendent: currentSuper });
+      currentTools = res.data || [];
+      renderToolList();
+    } catch {
+      document.getElementById("tool-list").innerHTML = `<div class="empty">Failed to load tools.</div>`;
+    }
+  }
+
+  function renderToolList() {
+    // Group by tool name, count available
+    const groups = {};
+    currentTools.forEach(t => {
+      if (!groups[t.toolName]) groups[t.toolName] = { available: 0, total: 0 };
+      groups[t.toolName].total++;
+      if (t.status === "Available") groups[t.toolName].available++;
+    });
+
+    const names = Object.keys(groups);
+    if (!names.length) {
+      document.getElementById("tool-list").innerHTML = `<div class="empty">No tools found for this superintendent.</div>`;
+      return;
+    }
+
+    document.getElementById("tool-list").innerHTML = names.map(name => {
+      const g   = groups[name];
+      const avl = g.available;
+      const tot = g.total;
+      const unavailable = avl === 0;
+      const badgeClass  = avl === 0 ? "avail-red" : avl <= 1 ? "avail-yellow" : "avail-green";
+      const badgeText   = avl === 0 ? "None available" : `${avl} available`;
+      return `
+        <div class="tool-card${unavailable ? " unavailable" : ""}"
+          onclick="${unavailable ? "" : `openRequestModal('${encodeURIComponent(name)}')`}">
+          <div class="tool-card-left">
+            <div class="tool-card-name">${name}</div>
+            <div class="tool-card-sub">${tot} unit${tot !== 1 ? "s" : ""} total</div>
+          </div>
+          <span class="avail-badge ${badgeClass}">${badgeText}</span>
+        </div>`;
+    }).join("");
+  }
+
+  // ── Electrician: request modal ────────────────────────────────────────────
+  let currentRequestTool = null;
+
+  function openRequestModal(encodedName) {
+    currentRequestTool = decodeURIComponent(encodedName);
+    document.getElementById("request-title").textContent    = currentRequestTool;
+    document.getElementById("request-subtitle").textContent = `Superintendent: ${currentSuper}`;
+    document.getElementById("request-name").value = "";
+    const btn = document.getElementById("request-btn");
+    btn.textContent = "Request Tool";
+    btn.className   = "btn btn-primary";
+    btn.disabled    = false;
+    document.getElementById("request-cancel").style.display = "";
+    document.getElementById("request-modal").classList.add("active");
+  }
+
+  function closeRequestModal() {
+    document.getElementById("request-modal").classList.remove("active");
+    currentRequestTool = null;
+  }
+
+  function closeRequestOnOverlay(e) {
+    if (e.target === document.getElementById("request-modal")) closeRequestModal();
+  }
+
+  async function submitRequest() {
+    const name = document.getElementById("request-name").value.trim();
+    if (!name) { alert("Please enter your name."); return; }
+
+    const btn = document.getElementById("request-btn");
+    btn.textContent = "Sending...";
+    btn.disabled    = true;
+    document.getElementById("request-cancel").style.display = "none";
+
+    try {
+      const res = await apiFetch({
+        action:         "requestTool",
+        superintendent: currentSuper,
+        toolName:       currentRequestTool,
+        requestedBy:    name
+      });
+
+      if (res.error) {
+        alert(res.error);
+        btn.textContent = "Request Tool";
+        btn.disabled    = false;
+        document.getElementById("request-cancel").style.display = "";
+        return;
+      }
+
+      btn.textContent = "✓ Requested!";
+      btn.className   = "btn btn-success-state";
+      closeRequestModal();
+
+      // Refresh tool list
+      const toolRes = await apiFetch({ action: "getTools", superintendent: currentSuper });
+      currentTools = toolRes.data || [];
+      renderToolList();
+
+      showToast("✓ Request Sent!", `The material handler has been notified. Your ${currentRequestTool} will be prepared for you.`);
+    } catch {
+      alert("Something went wrong. Please try again.");
+      btn.textContent = "Request Tool";
+      btn.disabled    = false;
+      document.getElementById("request-cancel").style.display = "";
+    }
+  }
+
+  // ── PIN modal ─────────────────────────────────────────────────────────────
+  function openPinModal() {
+    pinBuffer = "";
+    updatePinDots();
+    document.getElementById("pin-error").style.display = "none";
+    document.getElementById("pin-modal").classList.add("active");
+  }
+
+  function closePinModal() {
+    document.getElementById("pin-modal").classList.remove("active");
+    pinBuffer = "";
+    updatePinDots();
+  }
+
+  function closePinOnOverlay(e) {
+    if (e.target === document.getElementById("pin-modal")) closePinModal();
+  }
+
+  function pinKey(digit) {
+    if (pinBuffer.length >= 4) return;
+    pinBuffer += digit;
+    updatePinDots();
+    document.getElementById("pin-error").style.display = "none";
+    if (pinBuffer.length === 4) setTimeout(verifyPin, 200);
+  }
+
+  function pinDelete() {
+    pinBuffer = pinBuffer.slice(0, -1);
+    updatePinDots();
+  }
+
+  function updatePinDots() {
+    for (let i = 0; i < 4; i++) {
+      document.getElementById(`dot-${i}`).classList.toggle("filled", i < pinBuffer.length);
+    }
+  }
+
+  async function verifyPin() {
+    const enteredPin = pinBuffer;
+    // Find supers matching this PIN
+    const matched = configData.filter(r => String(r.pin) === enteredPin);
+    if (matched.length === 0) {
+      document.getElementById("pin-error").style.display = "block";
+      pinBuffer = "";
+      updatePinDots();
+      return;
+    }
+
+    closePinModal();
+    staffSupers = matched.map(r => r.superintendent);
+
+    if (staffSupers.length === 1) {
+      // Only one super for this PIN -- go straight in
+      await enterStaffView(staffSupers[0]);
+    } else {
+      // Multiple supers -- show selection
+      openStaffSuperModal();
+    }
+  }
+
+  // ── Staff super select modal ──────────────────────────────────────────────
+  function openStaffSuperModal() {
+    document.getElementById("staff-super-list").innerHTML = staffSupers.map(name => `
+      <div class="super-select-item" onclick="staffSuperSelected('${encodeURIComponent(name)}')">
+        <div class="super-select-initial">${initials(name)}</div>
+        <div class="super-select-name">${name}</div>
+      </div>`).join("");
+    document.getElementById("staff-super-modal").classList.add("active");
+  }
+
+  function closeStaffSuperModal() {
+    document.getElementById("staff-super-modal").classList.remove("active");
+  }
+
+  function closeStaffSuperOnOverlay(e) {
+    if (e.target === document.getElementById("staff-super-modal")) closeStaffSuperModal();
+  }
+
+  async function staffSuperSelected(encodedName) {
+    closeStaffSuperModal();
+    await enterStaffView(decodeURIComponent(encodedName));
+  }
+
+  // ── Staff view ────────────────────────────────────────────────────────────
+  async function enterStaffView(superName) {
+    currentSuper = superName;
+    document.getElementById("staff-title").textContent = superName;
+    document.getElementById("staff-tool-list").innerHTML = `<div class="loading">Loading...</div>`;
+    showView("view-staff-tools");
+    staffFilter = "all";
+    document.querySelectorAll(".filter-tab").forEach(t => t.classList.toggle("active", t.dataset.filter === "all"));
+    await loadStaffTools();
+  }
+
+  async function loadStaffTools() {
+    try {
+      const res = await apiFetch({ action: "getTools", superintendent: currentSuper, staff: "1" });
+      currentTools = res.data || [];
+      renderStaffTools();
+    } catch {
+      document.getElementById("staff-tool-list").innerHTML = `<div class="empty">Failed to load tools.</div>`;
+    }
+  }
+
+  function setStaffFilter(btn) {
+    staffFilter = btn.dataset.filter;
+    document.querySelectorAll(".filter-tab").forEach(t => t.classList.remove("active"));
+    btn.classList.add("active");
+    renderStaffTools();
+  }
+
+  function renderStaffTools() {
+    const filtered = staffFilter === "all"
+      ? currentTools
+      : currentTools.filter(t => t.status === staffFilter);
+
+    if (!filtered.length) {
+      document.getElementById("staff-tool-list").innerHTML = `<div class="empty">No tools with this status.</div>`;
+      return;
+    }
+
+    document.getElementById("staff-tool-list").innerHTML = filtered.map(t => {
+      const pillClass = t.status === "Available"
+        ? "pill-available"
+        : t.status === "Requested"
+        ? "pill-requested"
+        : "pill-checkedout";
+      const safeT = encodeURIComponent(JSON.stringify(t));
+      return `
+        <div class="staff-tool-card" onclick="openStaffActionModal(decodeURIComponent('${safeT}'))">
+          <div class="staff-tool-left">
+            <div class="staff-tool-name">${t.toolName}</div>
+            <div class="staff-tool-id">ID: ${t.toolId}${t.checkedOutBy ? " · " + t.checkedOutBy : ""}</div>
+          </div>
+          <span class="status-pill ${pillClass}">${t.status}</span>
+        </div>`;
+    }).join("");
+  }
+
+  function staffBack() {
+    if (staffSupers.length > 1) {
+      openStaffSuperModal();
+    } else {
+      showView("view-super-select");
+      staffSupers = [];
+      currentSuper = null;
+    }
+  }
+
+  // ── Staff action modal ────────────────────────────────────────────────────
+  function openStaffActionModal(toolJson) {
+    const tool = typeof toolJson === "string" ? JSON.parse(toolJson) : toolJson;
+    currentStaffTool = tool;
+
+    document.getElementById("staff-action-title").textContent    = tool.toolName;
+    document.getElementById("staff-action-subtitle").textContent = `ID: ${tool.toolId} · Status: ${tool.status}`;
+    document.getElementById("staff-action-name").value           = tool.checkedOutBy || "";
+
+    const btn   = document.getElementById("staff-action-btn");
+    const label = document.getElementById("staff-action-label");
+
+    if (tool.status === "Available") {
+      btn.textContent = "Check Out";
+      btn.className   = "btn btn-warning";
+      label.textContent = "Checking Out To";
+    } else if (tool.status === "Requested") {
+      btn.textContent = "Confirm Check Out";
+      btn.className   = "btn btn-warning";
+      label.textContent = "Checking Out To";
+    } else {
+      btn.textContent = "Check In";
+      btn.className   = "btn btn-success";
+      label.textContent = "Returned By";
+    }
+
+    btn.disabled = false;
+    document.getElementById("staff-action-cancel").style.display = "";
+    document.getElementById("staff-action-modal").classList.add("active");
+  }
+
+  function closeStaffActionModal() {
+    document.getElementById("staff-action-modal").classList.remove("active");
+    currentStaffTool = null;
+  }
+
+  function closeStaffActionOnOverlay(e) {
+    if (e.target === document.getElementById("staff-action-modal")) closeStaffActionModal();
+  }
+
+  async function submitStaffAction() {
+    const name = document.getElementById("staff-action-name").value.trim();
+    if (!name) { alert("Please enter a name."); return; }
+
+    const btn = document.getElementById("staff-action-btn");
+    btn.textContent = "Saving...";
+    btn.disabled    = true;
+    document.getElementById("staff-action-cancel").style.display = "none";
+
+    const isCheckIn = currentStaffTool.status === "Checked Out";
+    const action    = isCheckIn ? "checkIn" : "checkOut";
+
+    try {
+      const res = await apiFetch({
+        action,
+        superintendent: currentSuper,
+        toolName:       currentStaffTool.toolName,
+        toolId:         currentStaffTool.toolId,
+        name
+      });
+
+      if (res.error) {
+        alert(res.error);
+        btn.textContent = isCheckIn ? "Check In" : "Check Out";
+        btn.disabled    = false;
+        document.getElementById("staff-action-cancel").style.display = "";
+        return;
+      }
+
+      closeStaffActionModal();
+      await loadStaffTools();
+
+      const msg = isCheckIn
+        ? `${currentStaffTool.toolName} (ID: ${currentStaffTool.toolId}) has been checked back in.`
+        : `${currentStaffTool.toolName} (ID: ${currentStaffTool.toolId}) checked out to ${name}.`;
+      showToast(isCheckIn ? "✓ Checked In!" : "✓ Checked Out!", msg);
+
+    } catch {
+      alert("Something went wrong. Please try again.");
+      btn.textContent = isCheckIn ? "Check In" : "Check Out";
+      btn.disabled    = false;
+      document.getElementById("staff-action-cancel").style.display = "";
+    }
+  }
+
+  // ── Toast ─────────────────────────────────────────────────────────────────
+  function showToast(title, body) {
+    document.getElementById("toast-title").textContent = title;
+    document.getElementById("toast-body").textContent  = body;
+    document.getElementById("toast").classList.add("visible");
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(dismissToast, 4000);
+  }
+
+  function dismissToast() {
+    document.getElementById("toast").classList.remove("visible");
+    if (toastTimer) { clearTimeout(toastTimer); toastTimer = null; }
+  }
+
+  // ── Boot ──────────────────────────────────────────────────────────────────
+  init();
+</script>
+</body>
+</html>
