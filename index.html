@@ -248,6 +248,84 @@
       font-size: 15px;
     }
 
+    /* ── Selection ── */
+    .tool-card.selected {
+      border: 2px solid #4f46e5;
+      background: #f5f3ff;
+    }
+
+    .tool-check {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      border: 2px solid #ddd;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-right: 10px;
+      transition: all 0.15s;
+      background: #fff;
+    }
+
+    .tool-card.selected .tool-check {
+      background: #4f46e5;
+      border-color: #4f46e5;
+    }
+
+    .tool-check-tick {
+      color: #fff;
+      font-size: 12px;
+      font-weight: 700;
+      display: none;
+    }
+
+    .tool-card.selected .tool-check-tick { display: block; }
+
+    .selection-bar {
+      position: fixed;
+      bottom: -80px;
+      left: 12px;
+      right: 12px;
+      background: #4f46e5;
+      border-radius: 14px;
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 4px 20px rgba(79,70,229,0.4);
+      transition: bottom 0.3s ease;
+      z-index: 50;
+    }
+
+    .selection-bar.visible { bottom: 24px; }
+
+    .selection-bar-text {
+      color: #fff;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .selection-bar-btn {
+      background: #fff;
+      color: #4f46e5;
+      border: none;
+      padding: 9px 18px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .selection-clear {
+      color: rgba(255,255,255,0.7);
+      font-size: 12px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 4px;
+    }
+
     /* ── Modal ── */
     .modal-overlay {
       display: none;
@@ -623,6 +701,15 @@
   </div>
 </div>
 
+<!-- ── SELECTION BAR ── -->
+<div class="selection-bar" id="selection-bar">
+  <div>
+    <div class="selection-bar-text" id="selection-count"></div>
+    <button class="selection-clear" onclick="clearSelection()">Clear</button>
+  </div>
+  <button class="selection-bar-btn" onclick="openMultiRequestModal()">Request Tools</button>
+</div>
+
 <!-- ── TOAST ── -->
 <div class="toast" id="toast" onclick="dismissToast()">
   <div class="toast-title" id="toast-title"></div>
@@ -666,6 +753,7 @@
   let pinBuffer        = "";
   let toastTimer       = null;
   let toolsInMemory     = {};   // in-memory preloaded tools { superintendentName: [...] }
+  let selectedTools     = new Set(); // tool names selected by electrician
   let staffToolsInMemory = {}; // in-memory preloaded staff tools (all statuses)
   let staffToolMap       = {}; // index -> tool object for staff onclick
   let staffToolCounter   = 0;
@@ -689,7 +777,11 @@
     window.scrollTo(0, 0);
   }
 
-  function showSuperSelect() { showView("view-super-select"); currentSuper = null; }
+  function showSuperSelect() {
+    clearSelection();
+    showView("view-super-select");
+    currentSuper = null;
+  }
 
   // ── Init ──────────────────────────────────────────────────────────────────
   async function init() {
@@ -842,15 +934,19 @@
     }
 
     document.getElementById("tool-list").innerHTML = names.map(name => {
-      const g   = groups[name];
-      const avl = g.available;
-      const tot = g.total;
+      const g           = groups[name];
+      const avl         = g.available;
+      const tot         = g.total;
       const unavailable = avl === 0;
       const badgeClass  = avl === 0 ? "avail-red" : avl <= 1 ? "avail-yellow" : "avail-green";
       const badgeText   = avl === 0 ? "None available" : `${avl} available`;
+      const isSelected  = selectedTools.has(name);
+      const enc         = encodeURIComponent(name);
       return `
-        <div class="tool-card${unavailable ? " unavailable" : ""}"
-          onclick="${unavailable ? "" : `openRequestModal('${encodeURIComponent(name)}')`}">
+        <div class="tool-card${unavailable ? " unavailable" : ""}${isSelected ? " selected" : ""}"
+             id="tc-${enc}"
+             onclick="${unavailable ? "" : `toggleToolSelect('${enc}')`}">
+          ${unavailable ? "" : `<div class="tool-check" id="chk-${enc}"><span class="tool-check-tick">✓</span></div>`}
           <div class="tool-card-left">
             <div class="tool-card-name">${name}</div>
             <div class="tool-card-sub">${tot} unit${tot !== 1 ? "s" : ""} total</div>
@@ -858,10 +954,60 @@
           <span class="avail-badge ${badgeClass}">${badgeText}</span>
         </div>`;
     }).join("");
+
+    updateSelectionBar();
+  }
+
+  function toggleToolSelect(enc) {
+    const name = decodeURIComponent(enc);
+    const card = document.getElementById("tc-" + enc);
+    if (selectedTools.has(name)) {
+      selectedTools.delete(name);
+      card.classList.remove("selected");
+    } else {
+      selectedTools.add(name);
+      card.classList.add("selected");
+    }
+    updateSelectionBar();
+  }
+
+  function updateSelectionBar() {
+    const bar   = document.getElementById("selection-bar");
+    const count = selectedTools.size;
+    if (count > 0) {
+      document.getElementById("selection-count").textContent = `${count} tool${count !== 1 ? "s" : ""} selected`;
+      bar.classList.add("visible");
+    } else {
+      bar.classList.remove("visible");
+    }
+  }
+
+  function clearSelection() {
+    selectedTools.clear();
+    document.querySelectorAll(".tool-card.selected").forEach(c => c.classList.remove("selected"));
+    updateSelectionBar();
   }
 
   // ── Electrician: request modal ────────────────────────────────────────────
   let currentRequestTool = null;
+  let currentRequestTools = []; // for multi-tool requests
+
+  function openMultiRequestModal() {
+    const tools = Array.from(selectedTools);
+    if (!tools.length) return;
+    if (tools.length === 1) { openRequestModal(encodeURIComponent(tools[0])); return; }
+    currentRequestTool  = null;
+    currentRequestTools = tools;
+    document.getElementById("request-title").textContent    = `${tools.length} Tools Selected`;
+    document.getElementById("request-subtitle").textContent = tools.join("  ·  ");
+    document.getElementById("request-name").value = "";
+    const btn = document.getElementById("request-btn");
+    btn.textContent = `Request ${tools.length} Tools`;
+    btn.className   = "btn btn-primary";
+    btn.disabled    = false;
+    document.getElementById("request-cancel").style.display = "";
+    document.getElementById("request-modal").classList.add("active");
+  }
 
   function openRequestModal(encodedName) {
     currentRequestTool = decodeURIComponent(encodedName);
@@ -889,45 +1035,46 @@
     const name = document.getElementById("request-name").value.trim();
     if (!name) { alert("Please enter your name."); return; }
 
-    const btn = document.getElementById("request-btn");
+    const btn     = document.getElementById("request-btn");
     btn.textContent = "Sending...";
     btn.disabled    = true;
     document.getElementById("request-cancel").style.display = "none";
 
-    try {
-      const res = await apiFetch({
-        action:         "requestTool",
-        superintendent: currentSuper,
-        toolName:       currentRequestTool,
-        requestedBy:    name
-      });
+    const tools   = currentRequestTool ? [currentRequestTool] : currentRequestTools;
+    const isMulti = tools.length > 1;
 
-      if (res.error) {
-        alert(res.error);
-        btn.textContent = "Request Tool";
-        btn.disabled    = false;
-        document.getElementById("request-cancel").style.display = "";
-        return;
-      }
+    const res = await apiFetch({
+      action:         "requestTools",
+      superintendent: currentSuper,
+      toolNames:      tools,
+      requestedBy:    name
+    });
 
-      btn.textContent = "✓ Requested!";
-      btn.className   = "btn btn-success-state";
-      closeRequestModal();
-
-      // Invalidate cache and refresh tool list
-      lsClear("tools_" + currentSuper);
-      const toolRes = await apiFetch({ action: "getTools", superintendent: currentSuper });
-      currentTools = toolRes.data || [];
-      lsSet("tools_" + currentSuper, currentTools);
-      renderToolList();
-
-      showToast("✓ Request Sent!", `The material handler has been notified. Your ${currentRequestTool} will be prepared for you.`);
-    } catch {
-      alert("Something went wrong. Please try again.");
-      btn.textContent = "Request Tool";
+    if (res.error) {
+      alert(res.error);
+      btn.textContent = isMulti ? `Request ${tools.length} Tools` : "Request Tool";
       btn.disabled    = false;
       document.getElementById("request-cancel").style.display = "";
+      return;
     }
+
+    closeRequestModal();
+    clearSelection();
+
+    lsClear("tools_" + currentSuper);
+    delete toolsInMemory[currentSuper];
+    const toolRes = await apiFetch({ action: "getTools", superintendent: currentSuper });
+    if (toolRes.data) {
+      currentTools = toolRes.data;
+      toolsInMemory[currentSuper] = currentTools;
+      lsSet("tools_" + currentSuper, currentTools);
+      renderToolList();
+    }
+
+    const toastMsg = isMulti
+      ? `${tools.length} tools requested. The material handler has been notified.`
+      : `Your ${tools[0]} will be prepared for you.`;
+    showToast("✓ Request Sent!", toastMsg);
   }
 
   // ── PIN modal ─────────────────────────────────────────────────────────────
@@ -1152,52 +1299,68 @@
     const name = document.getElementById("staff-action-name").value.trim();
     if (!name) { alert("Please enter a name."); return; }
 
-    const btn = document.getElementById("staff-action-btn");
-    btn.textContent = "Saving...";
-    btn.disabled    = true;
-    document.getElementById("staff-action-cancel").style.display = "none";
+    const isCheckIn    = currentStaffTool.status === "Checked Out";
+    const action       = isCheckIn ? "checkIn" : "checkOut";
+    const savedToolName = currentStaffTool.toolName;
+    const savedToolId   = currentStaffTool.toolId;
+    const newStatus     = isCheckIn ? "Available" : "Checked Out";
+    const newCheckedBy  = isCheckIn ? "" : name;
 
-    const isCheckIn = currentStaffTool.status === "Checked Out";
-    const action    = isCheckIn ? "checkIn" : "checkOut";
+    // ── Snapshot for rollback ───────────────────────────────────────────
+    const prevTools      = currentTools.map(t => ({...t}));
+    const prevStaffTools = staffToolsInMemory[currentSuper]
+      ? staffToolsInMemory[currentSuper].map(t => ({...t}))
+      : null;
 
-    try {
-      const res = await apiFetch({
-        action,
-        superintendent: currentSuper,
-        toolName:       currentStaffTool.toolName,
-        toolId:         currentStaffTool.toolId,
-        name
-      });
-
-      if (res.error) {
-        alert(res.error);
-        btn.textContent = isCheckIn ? "Check In" : "Check Out";
-        btn.disabled    = false;
-        document.getElementById("staff-action-cancel").style.display = "";
-        return;
-      }
-
-      // Save before closeStaffActionModal sets currentStaffTool to null
-      const savedToolName = currentStaffTool.toolName;
-      const savedToolId   = currentStaffTool.toolId;
-
-      lsClear("tools_" + currentSuper);
-      delete toolsInMemory[currentSuper];
-      delete staffToolsInMemory[currentSuper];
-      closeStaffActionModal();
-      await loadStaffTools();
-
-      const msg = isCheckIn
-        ? `${savedToolName} (ID: ${savedToolId}) has been checked back in.`
-        : `${savedToolName} (ID: ${savedToolId}) checked out to ${name}.`;
-      showToast(isCheckIn ? "✓ Checked In!" : "✓ Checked Out!", msg);
-
-    } catch (e) {
-      alert("Something went wrong: " + (e.message || "Unknown error. Please try again."));
-      btn.textContent = isCheckIn ? "Check In" : "Check Out";
-      btn.disabled    = false;
-      document.getElementById("staff-action-cancel").style.display = "";
+    // ── Optimistic update -- change local state immediately ─────────────
+    function applyUpdate(tools) {
+      return tools.map(t =>
+        (t.toolName === savedToolName && String(t.toolId) === String(savedToolId))
+          ? {...t, status: newStatus, checkedOutBy: newCheckedBy}
+          : t
+      );
     }
+
+    currentTools = applyUpdate(currentTools);
+    if (staffToolsInMemory[currentSuper]) {
+      staffToolsInMemory[currentSuper] = applyUpdate(staffToolsInMemory[currentSuper]);
+    }
+    if (toolsInMemory[currentSuper]) {
+      toolsInMemory[currentSuper] = applyUpdate(toolsInMemory[currentSuper]);
+      lsSet("tools_" + currentSuper, toolsInMemory[currentSuper]);
+    }
+
+    // ── Close modal + render + toast immediately ────────────────────────
+    closeStaffActionModal();
+    renderStaffTools();
+
+    const msg = isCheckIn
+      ? `${savedToolName} (ID: ${savedToolId}) has been checked back in.`
+      : `${savedToolName} (ID: ${savedToolId}) checked out to ${name}.`;
+    showToast(isCheckIn ? "✓ Checked In!" : "✓ Checked Out!", msg);
+
+    // ── Sync to server in background ────────────────────────────────────
+    const res = await apiFetch({ action, superintendent: currentSuper, toolName: savedToolName, toolId: savedToolId, name });
+
+    if (res.error) {
+      // Rollback optimistic update
+      currentTools = prevTools;
+      if (prevStaffTools) staffToolsInMemory[currentSuper] = prevStaffTools;
+      renderStaffTools();
+      dismissToast();
+      alert("Action failed: " + res.error + ". The change has been reverted.");
+      return;
+    }
+
+    // Confirm with server state in background (don't block UI)
+    apiFetch({ action: "getTools", superintendent: currentSuper, staff: "1" }).then(r => {
+      if (r.data) {
+        staffToolsInMemory[currentSuper] = r.data;
+        currentTools = r.data;
+        lsClear("tools_" + currentSuper);
+        renderStaffTools();
+      }
+    });
   }
 
   // ── Toast ─────────────────────────────────────────────────────────────────
