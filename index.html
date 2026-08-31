@@ -1038,34 +1038,22 @@
     const tools   = currentRequestTool ? [currentRequestTool] : currentRequestTools;
     const isMulti = tools.length > 1;
 
-    // -- Optimistic update: mark selected tools as Requested locally right away
-    // Each tool type: decrement available count by marking one unit Requested
-    const updatedTools = currentTools.map(t => {
-      if (tools.includes(t.toolName) && t.status === "Available") {
-        // Mark the first available unit of each requested tool as Requested
-        const alreadyCounted = updatedTools
-          ? updatedTools.filter(u => u.toolName === t.toolName && u.status === "Requested").length
-          : 0;
-        const originalRequested = currentTools.filter(u => u.toolName === t.toolName && u.status === "Requested").length;
-        if (alreadyCounted <= originalRequested) {
-          return Object.assign({}, t, { status: "Requested", checkedOutBy: name });
-        }
-      }
-      return t;
-    });
+    // Snapshot for rollback
+    const snapshot = currentTools.map(t => Object.assign({}, t));
 
-    // Simpler approach: for each requested tool name, flip exactly one Available unit to Requested
-    const snapshot    = currentTools.map(t => Object.assign({}, t));
-    const flippedTools = currentTools.slice();
+    // Optimistic update: flip one Available unit per requested tool to Requested
+    const flipped = currentTools.slice();
     tools.forEach(function(toolName) {
-      const idx = flippedTools.findIndex(t => t.toolName === toolName && t.status === "Available");
-      if (idx > -1) flippedTools[idx] = Object.assign({}, flippedTools[idx], { status: "Requested", checkedOutBy: name });
+      const idx = flipped.findIndex(t => t.toolName === toolName && t.status === "Available");
+      if (idx > -1) {
+        flipped[idx] = Object.assign({}, flipped[idx], { status: "Requested", checkedOutBy: name });
+      }
     });
 
-    currentTools = flippedTools;
-    toolsInMemory[currentSuper] = flippedTools;
+    currentTools = flipped;
+    toolsInMemory[currentSuper] = flipped;
 
-    // Close modal + render immediately
+    // Close modal and update UI immediately
     closeRequestModal();
     clearSelection();
     renderToolList();
@@ -1073,9 +1061,9 @@
     const toastMsg = isMulti
       ? `${tools.length} tools requested. The material handler has been notified.`
       : `Your ${tools[0]} will be prepared for you.`;
-    showToast("✓ Request Sent!", toastMsg);
+    showToast("\u2713 Request Sent!", toastMsg);
 
-    // Send to server in background
+    // Sync to server in background
     const res = await apiFetch({
       action:         "requestTools",
       superintendent: currentSuper,
@@ -1084,7 +1072,7 @@
     });
 
     if (res.error) {
-      // Rollback optimistic update
+      // Rollback
       currentTools = snapshot;
       toolsInMemory[currentSuper] = snapshot;
       renderToolList();
@@ -1093,7 +1081,7 @@
       return;
     }
 
-    // Confirm with server state silently in background
+    // Silently confirm with server state
     apiFetch({ action: "getTools", superintendent: currentSuper }).then(function(toolRes) {
       if (toolRes.data) {
         currentTools = toolRes.data;
