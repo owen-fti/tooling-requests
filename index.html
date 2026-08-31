@@ -726,16 +726,25 @@
   }
 
   // Preload all superintendent tool data in parallel on page load
+  // Fetches both electrician view (Available only) and staff view (all statuses)
   async function preloadAllTools() {
     if (!allSupers.length) return;
-    const results = await Promise.allSettled(
-      allSupers.map(name => apiFetch({ action: "getTools", superintendent: name }))
-    );
+
+    // Fetch electrician view and staff view simultaneously for all supers
+    const [elecResults, staffResults] = await Promise.all([
+      Promise.allSettled(allSupers.map(name => apiFetch({ action: "getTools", superintendent: name }))),
+      Promise.allSettled(allSupers.map(name => apiFetch({ action: "getTools", superintendent: name, staff: "1" })))
+    ]);
+
     allSupers.forEach((name, i) => {
-      const r = results[i];
-      if (r.status === "fulfilled" && r.value.data) {
-        toolsInMemory[name] = r.value.data;
-        lsSet("tools_" + name, r.value.data);
+      const elec  = elecResults[i];
+      const staff = staffResults[i];
+      if (elec.status  === "fulfilled" && elec.value.data)  {
+        toolsInMemory[name] = elec.value.data;
+        lsSet("tools_" + name, elec.value.data);
+      }
+      if (staff.status === "fulfilled" && staff.value.data) {
+        staffToolsInMemory[name] = staff.value.data;
       }
     });
   }
@@ -1168,6 +1177,10 @@
         return;
       }
 
+      // Save before closeStaffActionModal sets currentStaffTool to null
+      const savedToolName = currentStaffTool.toolName;
+      const savedToolId   = currentStaffTool.toolId;
+
       lsClear("tools_" + currentSuper);
       delete toolsInMemory[currentSuper];
       delete staffToolsInMemory[currentSuper];
@@ -1175,8 +1188,8 @@
       await loadStaffTools();
 
       const msg = isCheckIn
-        ? `${currentStaffTool.toolName} (ID: ${currentStaffTool.toolId}) has been checked back in.`
-        : `${currentStaffTool.toolName} (ID: ${currentStaffTool.toolId}) checked out to ${name}.`;
+        ? `${savedToolName} (ID: ${savedToolId}) has been checked back in.`
+        : `${savedToolName} (ID: ${savedToolId}) checked out to ${name}.`;
       showToast(isCheckIn ? "✓ Checked In!" : "✓ Checked Out!", msg);
 
     } catch (e) {
