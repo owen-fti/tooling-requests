@@ -251,6 +251,53 @@
     .pill-requested  { background: #fef3c7; color: #92400e; }
     .pill-checkedout { background: #fee2e2; color: #991b1b; }
 
+    /* ── History panel ── */
+    .history-search-wrap { padding: 0 0 8px; }
+    .history-search-wrap input {
+      width: 100%; padding: 10px 12px; border: none;
+      border-radius: 8px; font-size: 14px;
+      background: #2e2e4a; color: #fff; outline: none;
+      -webkit-appearance: none;
+    }
+    .history-search-wrap input::placeholder { color: #888aaa; }
+
+    .history-zone-filter {
+      display: flex; gap: 0; margin-bottom: 10px;
+    }
+    .hz-btn {
+      flex: 1; padding: 7px 4px; border: none;
+      background: #2e2e4a; color: #888aaa;
+      font-size: 11px; font-weight: 600; cursor: pointer;
+      border-right: 1px solid #1a1a2e;
+      transition: background 0.15s, color 0.15s;
+    }
+    .hz-btn:first-child { border-radius: 8px 0 0 8px; }
+    .hz-btn:last-child  { border-radius: 0 8px 8px 0; border-right: none; }
+    .hz-btn.active      { background: #4f46e5; color: #fff; }
+
+    .history-list { display: flex; flex-direction: column; gap: 8px; }
+
+    .history-card {
+      background: #fff; border-radius: 10px;
+      padding: 11px 13px; box-shadow: 0 1px 3px rgba(0,0,0,0.07);
+    }
+    .history-card-top {
+      display: flex; align-items: flex-start;
+      justify-content: space-between; gap: 8px; margin-bottom: 4px;
+    }
+    .history-action {
+      display: inline-block; font-size: 10px; font-weight: 700;
+      padding: 2px 8px; border-radius: 20px; letter-spacing: 0.3px;
+    }
+    .action-checkout  { background: #fee2e2; color: #991b1b; }
+    .action-checkin   { background: #d1fae5; color: #065f46; }
+    .action-requested { background: #fef3c7; color: #92400e; }
+    .action-cancelled { background: #f3f4f6; color: #6b7280; }
+
+    .history-tool-name { font-size: 13px; font-weight: 600; margin-bottom: 2px; }
+    .history-meta      { font-size: 12px; color: #888; line-height: 1.5; }
+    .history-id        { font-size: 11px; color: #aaa; }
+
     /* ── Filter tabs (staff) ── */
     .filter-tabs {
       display: flex;
@@ -646,9 +693,30 @@
       <button class="filter-tab"         data-filter="Available" onclick="setStaffFilter(this)">Available</button>
       <button class="filter-tab"         data-filter="Requested" onclick="setStaffFilter(this)">Requested</button>
       <button class="filter-tab"         data-filter="Checked Out" onclick="setStaffFilter(this)">Checked Out</button>
+      <button class="filter-tab"         data-filter="history"     onclick="setStaffFilter(this)">History</button>
     </div>
     <div class="tool-list" id="staff-tool-list">
       <div class="loading">Loading...</div>
+    </div>
+
+    <!-- History panel (shown when History tab is active) -->
+    <div id="staff-history-panel" style="display:none">
+      <div class="history-search-wrap">
+        <input type="text" id="history-search"
+          placeholder="Search tool, ID, name, action, date..."
+          autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+          oninput="renderHistory()" />
+      </div>
+      <div class="history-zone-filter">
+        <button class="hz-btn active" data-hzone="all"        onclick="setHistoryZone(this)">All</button>
+        <button class="hz-btn"        data-hzone="CHECKED OUT"         onclick="setHistoryZone(this)">Checked Out</button>
+        <button class="hz-btn"        data-hzone="CHECKED IN"          onclick="setHistoryZone(this)">Checked In</button>
+        <button class="hz-btn"        data-hzone="REQUESTED"           onclick="setHistoryZone(this)">Requested</button>
+        <button class="hz-btn"        data-hzone="REQUEST CANCELLED"   onclick="setHistoryZone(this)">Cancelled</button>
+      </div>
+      <div class="history-list" id="staff-history-list">
+        <div class="loading">Loading...</div>
+      </div>
     </div>
   </div>
 </div>
@@ -820,7 +888,9 @@
   let selectedTools      = new Set(); // Electrician selected tool names
   let selectedStaffKeys  = new Set(); // Staff selected unique keys ("toolName|||toolId")
   let currentStaffAction = null;     // 'checkOut', 'checkIn', 'cancel'
-  let staffToolsInMemory = {}; 
+  let staffToolsInMemory = {};
+  let _staffHistory      = [];
+  let historyZoneFilter  = "all"; 
 
   // ── API Fetch with Sync Tracking ─────────────────────────────────────────
   async function apiFetch(params) {
@@ -1252,6 +1322,16 @@
     document.querySelectorAll(".filter-tab").forEach(t => t.classList.remove("active"));
     btn.classList.add("active");
     clearStaffSelection();
+
+    const isHistory = staffFilter === "history";
+    document.getElementById("staff-tool-list").style.display    = isHistory ? "none" : "";
+    document.getElementById("staff-history-panel").style.display = isHistory ? "block" : "none";
+
+    if (isHistory) {
+      historyZoneFilter = "all";
+      document.querySelectorAll(".hz-btn").forEach(b => b.classList.toggle("active", b.dataset.hzone === "all"));
+      loadStaffHistory();
+    }
   }
 
   function getSelectedStaffItems() {
@@ -1588,6 +1668,84 @@
   function dismissToast() {
     document.getElementById("toast").classList.remove("visible");
     if (toastTimer) { clearTimeout(toastTimer); toastTimer = null; }
+  }
+
+  // ── Staff History ─────────────────────────────────────────────────────────
+
+  function setHistoryZone(btn) {
+    historyZoneFilter = btn.dataset.hzone;
+    document.querySelectorAll(".hz-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    renderHistory();
+  }
+
+  // Fuzzy multi-token search across all history fields
+  function historyMatchesSearch(query, h) {
+    if (!query) return true;
+    // Build a single searchable string from all fields
+    const hay = [
+      h.toolName, h.toolId, h.action, h.name, h.timestamp, h.superintendent
+    ].join(" ").toLowerCase();
+    // Split query on spaces and hyphens -- all tokens must appear
+    const tokens = query.toLowerCase().split(/[\s\-]+/).filter(Boolean);
+    return tokens.every(t => hay.includes(t));
+  }
+
+  function renderHistory() {
+    const query  = (document.getElementById("history-search") || {}).value || "";
+    const zone   = historyZoneFilter;
+
+    let filtered = _staffHistory;
+
+    // Filter by superintendent (show only current super's history)
+    filtered = filtered.filter(h => h.superintendent === currentSuper);
+
+    // Filter by action type
+    if (zone !== "all") {
+      filtered = filtered.filter(h => h.action.toUpperCase() === zone.toUpperCase());
+    }
+
+    // Fuzzy search
+    if (query.trim()) {
+      filtered = filtered.filter(h => historyMatchesSearch(query.trim(), h));
+    }
+
+    const listEl = document.getElementById("staff-history-list");
+    if (!filtered.length) {
+      listEl.innerHTML = `<div class="empty">No history found.</div>`;
+      return;
+    }
+
+    listEl.innerHTML = filtered.map(h => {
+      const action   = (h.action || "").toUpperCase();
+      let badgeClass = "action-requested";
+      if      (action === "CHECKED OUT")        badgeClass = "action-checkout";
+      else if (action === "CHECKED IN")         badgeClass = "action-checkin";
+      else if (action === "REQUEST CANCELLED")  badgeClass = "action-cancelled";
+
+      return `
+        <div class="history-card">
+          <div class="history-card-top">
+            <span class="history-action ${badgeClass}">${h.action}</span>
+            <span class="history-id">ID: ${h.toolId || "-"}</span>
+          </div>
+          <div class="history-tool-name">${h.toolName || ""}</div>
+          <div class="history-meta">
+            ${h.name ? `<strong>${h.name}</strong> &middot; ` : ""}${h.timestamp || ""}
+          </div>
+        </div>`;
+    }).join("");
+  }
+
+  async function loadStaffHistory() {
+    document.getElementById("staff-history-list").innerHTML = `<div class="loading">Loading...</div>`;
+    const res = await apiFetch({ action: "getHistory", superintendent: currentSuper });
+    if (res.data) {
+      _staffHistory = res.data;
+      renderHistory();
+    } else {
+      document.getElementById("staff-history-list").innerHTML = `<div class="empty">Failed to load history.</div>`;
+    }
   }
 
   // ── Boot ──────────────────────────────────────────────────────────────────
