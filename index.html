@@ -41,6 +41,28 @@
     .spinning { animation: spin 1s linear infinite; display: inline-block; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
+    /* Sync Indicator Pulse */
+    .sync-indicator {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #6366f1;
+      display: inline-block;
+      margin-left: 6px;
+      vertical-align: middle;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+      animation: syncPulse 1.2s infinite ease-in-out;
+    }
+
+    .sync-indicator.active { opacity: 1; }
+
+    @keyframes syncPulse {
+      0% { transform: scale(0.8); opacity: 0.3; }
+      50% { transform: scale(1.3); opacity: 1; }
+      100% { transform: scale(0.8); opacity: 0.3; }
+    }
+
     .staff-btn {
       background: #2e2e4a;
       border: none;
@@ -186,10 +208,17 @@
       gap: 10px;
       cursor: pointer;
       -webkit-tap-highlight-color: transparent;
-      transition: transform 0.1s;
+      transition: transform 0.1s, opacity 0.2s ease, filter 0.2s ease;
     }
 
     .staff-tool-card:active { transform: scale(0.985); }
+
+    .staff-card-disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+      filter: grayscale(80%);
+      pointer-events: none;
+    }
 
     .staff-tool-left { flex: 1; min-width: 0; }
 
@@ -249,7 +278,7 @@
     }
 
     /* ── Selection ── */
-    .tool-card.selected {
+    .tool-card.selected, .staff-tool-card.selected {
       border: 2px solid #4f46e5;
       background: #f5f3ff;
     }
@@ -268,7 +297,7 @@
       background: #fff;
     }
 
-    .tool-card.selected .tool-check {
+    .tool-card.selected .tool-check, .staff-tool-card.selected .tool-check {
       background: #4f46e5;
       border-color: #4f46e5;
     }
@@ -280,7 +309,7 @@
       display: none;
     }
 
-    .tool-card.selected .tool-check-tick { display: block; }
+    .tool-card.selected .tool-check-tick, .staff-tool-card.selected .tool-check-tick { display: block; }
 
     .selection-bar {
       position: fixed;
@@ -310,11 +339,16 @@
       background: #fff;
       color: #4f46e5;
       border: none;
-      padding: 9px 18px;
+      padding: 9px 16px;
       border-radius: 10px;
-      font-size: 14px;
+      font-size: 13px;
       font-weight: 700;
       cursor: pointer;
+    }
+
+    .selection-bar-btn.btn-danger-bar {
+      background: #fee2e2;
+      color: #991b1b;
     }
 
     .selection-clear {
@@ -506,8 +540,8 @@
     .btn-primary       { background: #4f46e5; color: #fff; }
     .btn-success       { background: #059669; color: #fff; }
     .btn-warning       { background: #d97706; color: #fff; }
+    .btn-danger        { background: #dc2626; color: #fff; }
     .btn-cancel        { background: #f2f4f7; color: #666; }
-    .btn-success-state { background: #059669; color: #fff; }
 
     /* ── Toast ── */
     .toast {
@@ -533,7 +567,7 @@
     .toast-body   { font-size: 13px; color: #ccc; line-height: 1.4; }
     .toast-dismiss { font-size: 10px; color: #555; margin-top: 8px; }
 
-    /* ── Staff header variant ── */
+    /* ── Staff header ── */
     .staff-header {
       background: #1a1a2e;
       padding: 14px;
@@ -556,11 +590,11 @@
   <header>
     <div class="header-top">
       <div>
-        <h1>Tooling Requests</h1>
+        <h1>Tooling Requests <span class="sync-indicator" title="Syncing..."></span></h1>
         <p>Select your superintendent</p>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
-        <button id="refresh-btn" class="staff-btn" onclick="manualRefresh()" style="font-size:15px;padding:6px 10px">↻</button>
+        <button class="staff-btn refresh-btn-icon" onclick="manualRefresh()" style="font-size:15px;padding:6px 10px">↻</button>
         <button class="staff-btn" onclick="openPinModal()">Staff</button>
       </div>
     </div>
@@ -578,7 +612,7 @@
   <header>
     <div class="header-top">
       <div>
-        <h1 id="tool-list-title">Tools</h1>
+        <h1 id="tool-list-title">Tools <span class="sync-indicator" title="Syncing..."></span></h1>
         <p>Tap a tool to request it</p>
       </div>
       <div class="header-right">
@@ -596,8 +630,10 @@
 <!-- ── VIEW: STAFF TOOL LIST ── -->
 <div id="view-staff-tools" class="view">
   <div class="staff-header">
-    <button class="back-btn" onclick="staffBack()">&#8592;</button>
+    <button class="back-btn" onclick="staffExit()">&#8592; Exit</button>
     <h1 id="staff-title">Staff View</h1>
+    <button class="staff-btn refresh-btn-icon" onclick="manualRefresh()" style="font-size:15px;padding:6px 10px">↻</button>
+    <span class="sync-indicator" title="Syncing..."></span>
     <span class="staff-badge">STAFF</span>
   </div>
   <div class="page-content">
@@ -690,24 +726,37 @@
     </div>
     <div class="modal-title"    id="staff-action-title"></div>
     <div class="modal-subtitle" id="staff-action-subtitle"></div>
-    <div class="name-input-wrap">
+    
+    <!-- Item List with Tool ID Dropdowns -->
+    <div id="staff-action-items-list" style="margin-bottom:14px; display:flex; flex-direction:column; gap:10px;"></div>
+
+    <div class="name-input-wrap" id="staff-action-name-wrap">
       <label id="staff-action-label">Name</label>
       <input type="text" id="staff-action-name"
         placeholder="Enter name..."
         autocomplete="name" autocorrect="off" spellcheck="false" />
     </div>
-    <button class="btn" id="staff-action-btn" onclick="submitStaffAction()"></button>
+    <button class="btn" id="staff-action-btn" onclick="submitStaffBatchAction()"></button>
     <button class="btn btn-cancel" id="staff-action-cancel" onclick="closeStaffActionModal()">Cancel</button>
   </div>
 </div>
 
-<!-- ── SELECTION BAR ── -->
+<!-- ── ELECTRICIAN SELECTION BAR ── -->
 <div class="selection-bar" id="selection-bar">
   <div>
     <div class="selection-bar-text" id="selection-count"></div>
     <button class="selection-clear" onclick="clearSelection()">Clear</button>
   </div>
   <button class="selection-bar-btn" onclick="openMultiRequestModal()">Request Tools</button>
+</div>
+
+<!-- ── STAFF SELECTION BAR ── -->
+<div class="selection-bar" id="staff-selection-bar">
+  <div>
+    <div class="selection-bar-text" id="staff-selection-count"></div>
+    <button class="selection-clear" onclick="clearStaffSelection()">Clear</button>
+  </div>
+  <div style="display:flex; gap:8px;" id="staff-selection-actions"></div>
 </div>
 
 <!-- ── TOAST ── -->
@@ -723,7 +772,7 @@
   const CONFIG_TTL       = 60 * 60 * 1000;  // 1 hour
   const TOOLS_TTL        = 2  * 60 * 1000;  // 2 minutes
 
-  // ── LocalStorage cache helpers ─────────────────────────────────────────
+  // ── LocalStorage Cache Helpers ──────────────────────────────────────────
   function lsSet(key, data) {
     try { localStorage.setItem(key, JSON.stringify({ data, ts: Date.now() })); } catch {}
   }
@@ -742,31 +791,51 @@
     try { localStorage.removeItem(key); } catch {}
   }
 
-  // ── State ─────────────────────────────────────────────────────────────────
-  let allSupers        = [];   
-  let configData       = [];   
-  let currentSuper     = null; 
-  let currentTools     = [];   
-  let staffSupers      = [];   
-  let staffFilter      = "all";
-  let currentStaffTool = null; 
-  let pinBuffer        = "";
-  let toastTimer       = null;
-  let toolsInMemory      = {};   
-  let selectedTools     = new Set(); 
-  let staffToolsInMemory = {}; 
-  let staffToolMap       = {}; 
-  let staffToolCounter   = 0;
+  // ── Sync Indicator Management ────────────────────────────────────────────
+  let activeSyncRequests = 0;
 
-  // ── API ───────────────────────────────────────────────────────────────────
+  function updateSyncIndicator() {
+    const indicators = document.querySelectorAll(".sync-indicator");
+    indicators.forEach(el => {
+      if (activeSyncRequests > 0) el.classList.add("active");
+      else el.classList.remove("active");
+    });
+  }
+
+  // ── State ─────────────────────────────────────────────────────────────────
+  let allSupers            = [];   
+  let configData           = [];   
+  let currentSuper         = null; 
+  let currentTools         = [];   
+  let staffSupers          = [];   
+  let staffFilter          = "all";
+  let pinBuffer            = "";
+  let toastTimer           = null;
+  let isSubmitting         = false; // Double submit guard
+  let toolsInMemory        = {};   
+  let selectedTools        = new Set(); // Electrician selected tool names
+  let selectedStaffIndices = new Set(); // Staff selected item indices
+  let currentStaffAction   = null;     // 'checkOut', 'checkIn', 'cancel'
+  let staffToolsInMemory   = {}; 
+  let staffToolMap         = {}; 
+  let staffToolCounter     = 0;
+
+  // ── API Fetch with Sync Tracking ─────────────────────────────────────────
   async function apiFetch(params) {
+    activeSyncRequests++;
+    updateSyncIndicator();
     const p = {};
-    for (const [k, v] of Object.entries(params)) p[k] = Array.isArray(v) ? JSON.stringify(v) : v;
+    for (const [k, v] of Object.entries(params)) {
+      p[k] = (Array.isArray(v) || (typeof v === 'object' && v !== null)) ? JSON.stringify(v) : v;
+    }
     try {
       const res = await fetch(SCRIPT_URL + "?" + new URLSearchParams(p).toString());
       try { return await res.json(); } catch { return { error: "Server returned an unexpected response." }; }
     } catch (e) {
       return { error: "Network error. Check your connection and try again." };
+    } finally {
+      activeSyncRequests = Math.max(0, activeSyncRequests - 1);
+      updateSyncIndicator();
     }
   }
 
@@ -779,8 +848,16 @@
 
   function showSuperSelect() {
     clearSelection();
+    clearStaffSelection();
     showView("view-super-select");
     currentSuper = null;
+  }
+
+  function staffExit() {
+    clearStaffSelection();
+    staffSupers = [];
+    currentSuper = null;
+    showSuperSelect();
   }
 
   // ── Init ──────────────────────────────────────────────────────────────────
@@ -789,7 +866,7 @@
     if (cached) {
       applyBundleData(cached);
       renderSuperGrid();
-      // Background revalidation
+      // Silent background revalidation
       apiFetch({ action: "getInitialData" }).then(res => {
         if (res.config && res.toolsBySuper) {
           lsSet(BUNDLE_CACHE_KEY, res);
@@ -823,13 +900,19 @@
   }
 
   async function manualRefresh() {
-    const btn = document.getElementById("refresh-btn");
-    if (btn) { btn.textContent = "↻"; btn.classList.add("spinning"); }
+    const btns = document.querySelectorAll(".refresh-btn-icon");
+    btns.forEach(btn => { btn.textContent = "↻"; btn.classList.add("spinning"); });
+
     lsClear(BUNDLE_CACHE_KEY);
     toolsInMemory = {};
     staffToolsInMemory = {};
     await init();
-    if (btn) { btn.classList.remove("spinning"); btn.textContent = "↻"; }
+
+    if (currentSuper && document.getElementById("view-staff-tools").classList.contains("active")) {
+      await loadStaffTools();
+    }
+
+    btns.forEach(btn => { btn.classList.remove("spinning"); btn.textContent = "↻"; });
   }
 
   function initials(name) {
@@ -844,13 +927,12 @@
       </div>`).join("");
   }
 
-  // ── Electrician: select super (Stale-While-Revalidate) ────────────────────
+  // ── Electrician View ──────────────────────────────────────────────────────
   async function selectSuper(encodedName) {
     currentSuper = decodeURIComponent(encodedName);
     document.getElementById("tool-list-title").textContent = currentSuper;
     showView("view-tool-list");
 
-    // 1. Render Cache Immediately (0ms)
     if (toolsInMemory[currentSuper]) {
       currentTools = toolsInMemory[currentSuper];
       renderToolList();
@@ -858,7 +940,6 @@
       document.getElementById("tool-list").innerHTML = `<div class="loading">Loading...</div>`;
     }
 
-    // 2. Always Revalidate in Background
     apiFetch({ action: "getTools", superintendent: currentSuper }).then(res => {
       if (!res.error && res.data) {
         currentTools = res.data;
@@ -938,7 +1019,7 @@
     updateSelectionBar();
   }
 
-  // ── Electrician: request modal ────────────────────────────────────────────
+  // ── Electrician Request Modal ────────────────────────────────────────────
   let currentRequestTool = null;
   let currentRequestTools = [];
 
@@ -982,73 +1063,80 @@
   }
 
   async function submitRequest() {
+    if (isSubmitting) return;
+
     const name = document.getElementById("request-name").value.trim();
     if (!name) { alert("Please enter your name."); return; }
 
-    const tools   = currentRequestTool ? [currentRequestTool] : currentRequestTools;
-    const isMulti = tools.length > 1;
+    isSubmitting = true;
+    const btn = document.getElementById("request-btn");
+    if (btn) btn.disabled = true;
 
-    // Snapshot for rollback
-    const snapshotElec  = currentTools.map(t => Object.assign({}, t));
-    const snapshotStaff = staffToolsInMemory[currentSuper] ? staffToolsInMemory[currentSuper].map(t => Object.assign({}, t)) : null;
+    try {
+      const tools   = currentRequestTool ? [currentRequestTool] : currentRequestTools;
+      const isMulti = tools.length > 1;
 
-    // Dual Optimistic Update: Electrician View
-    const flippedElec = currentTools.slice();
-    tools.forEach(toolName => {
-      const idx = flippedElec.findIndex(t => t.toolName === toolName && t.status === "Available");
-      if (idx > -1) {
-        flippedElec[idx] = Object.assign({}, flippedElec[idx], { status: "Requested", checkedOutBy: name });
-      }
-    });
-    currentTools = flippedElec;
-    toolsInMemory[currentSuper] = flippedElec;
+      const snapshotElec  = currentTools.map(t => Object.assign({}, t));
+      const snapshotStaff = staffToolsInMemory[currentSuper] ? staffToolsInMemory[currentSuper].map(t => Object.assign({}, t)) : null;
 
-    // Dual Optimistic Update: Staff View
-    if (staffToolsInMemory[currentSuper]) {
-      const flippedStaff = staffToolsInMemory[currentSuper].slice();
+      const flippedElec = currentTools.slice();
       tools.forEach(toolName => {
-        const idx = flippedStaff.findIndex(t => t.toolName === toolName && t.status === "Available");
+        const idx = flippedElec.findIndex(t => t.toolName === toolName && t.status === "Available");
         if (idx > -1) {
-          flippedStaff[idx] = Object.assign({}, flippedStaff[idx], { status: "Requested", checkedOutBy: name });
+          flippedElec[idx] = Object.assign({}, flippedElec[idx], { status: "Requested", name: name, checkedOutBy: name });
         }
       });
-      staffToolsInMemory[currentSuper] = flippedStaff;
-    }
+      currentTools = flippedElec;
+      toolsInMemory[currentSuper] = flippedElec;
 
-    lsClear(BUNDLE_CACHE_KEY); // Clear bundle cache so fresh state is fetched next restart
-    closeRequestModal();
-    clearSelection();
-    renderToolList();
+      if (staffToolsInMemory[currentSuper]) {
+        const flippedStaff = staffToolsInMemory[currentSuper].slice();
+        tools.forEach(toolName => {
+          const idx = flippedStaff.findIndex(t => t.toolName === toolName && t.status === "Available");
+          if (idx > -1) {
+            flippedStaff[idx] = Object.assign({}, flippedStaff[idx], { status: "Requested", name: name, checkedOutBy: name });
+          }
+        });
+        staffToolsInMemory[currentSuper] = flippedStaff;
+      }
 
-    const toastMsg = isMulti
-      ? `${tools.length} tools requested. The material handler has been notified.`
-      : `Your ${tools[0]} will be prepared for you.`;
-    showToast("\u2713 Request Sent!", toastMsg);
-
-    const res = await apiFetch({
-      action:         "requestTools",
-      superintendent: currentSuper,
-      toolNames:      tools,
-      requestedBy:    name
-    });
-
-    if (res.error) {
-      currentTools = snapshotElec;
-      toolsInMemory[currentSuper] = snapshotElec;
-      if (snapshotStaff) staffToolsInMemory[currentSuper] = snapshotStaff;
+      lsClear(BUNDLE_CACHE_KEY);
+      closeRequestModal();
+      clearSelection();
       renderToolList();
-      dismissToast();
-      alert("Request failed: " + res.error);
-      return;
-    }
 
-    // Background confirmation
-    apiFetch({ action: "getTools", superintendent: currentSuper, staff: "1" }).then(r => {
-      if (r.data) staffToolsInMemory[currentSuper] = r.data;
-    });
+      const toastMsg = isMulti
+        ? `${tools.length} tools requested. The material handler has been notified.`
+        : `Your ${tools[0]} will be prepared for you.`;
+      showToast("\u2713 Request Sent!", toastMsg);
+
+      const res = await apiFetch({
+        action:         "requestTools",
+        superintendent: currentSuper,
+        toolNames:      tools,
+        requestedBy:    name
+      });
+
+      if (res.error) {
+        currentTools = snapshotElec;
+        toolsInMemory[currentSuper] = snapshotElec;
+        if (snapshotStaff) staffToolsInMemory[currentSuper] = snapshotStaff;
+        renderToolList();
+        dismissToast();
+        alert("Request failed: " + res.error);
+        return;
+      }
+
+      apiFetch({ action: "getTools", superintendent: currentSuper, staff: "1" }).then(r => {
+        if (r.data) staffToolsInMemory[currentSuper] = r.data;
+      });
+    } finally {
+      isSubmitting = false;
+      if (btn) btn.disabled = false;
+    }
   }
 
-  // ── PIN modal ─────────────────────────────────────────────────────────────
+  // ── PIN Modal ─────────────────────────────────────────────────────────────
   function openPinModal() {
     pinBuffer = "";
     updatePinDots();
@@ -1105,7 +1193,7 @@
     }
   }
 
-  // ── Staff super select modal ──────────────────────────────────────────────
+  // ── Staff Super Select Modal ──────────────────────────────────────────────
   function openStaffSuperModal() {
     document.getElementById("staff-super-list").innerHTML = staffSupers.map(name => `
       <div class="super-select-item" onclick="staffSuperSelected('${encodeURIComponent(name)}')">
@@ -1128,9 +1216,10 @@
     await enterStaffView(decodeURIComponent(encodedName));
   }
 
-  // ── Staff view (Stale-While-Revalidate) ───────────────────────────────────
+  // ── Staff View & Multi-Select ─────────────────────────────────────────────
   async function enterStaffView(superName) {
     currentSuper = superName;
+    clearStaffSelection();
     document.getElementById("staff-title").textContent = superName;
     showView("view-staff-tools");
     staffFilter = "all";
@@ -1139,7 +1228,6 @@
   }
 
   async function loadStaffTools() {
-    // 1. Render Cache Immediately (0ms)
     if (staffToolsInMemory[currentSuper] && staffToolsInMemory[currentSuper].length > 0) {
       currentTools = staffToolsInMemory[currentSuper];
       renderStaffTools();
@@ -1147,7 +1235,6 @@
       document.getElementById("staff-tool-list").innerHTML = `<div class="loading">Loading...</div>`;
     }
 
-    // 2. Always Revalidate in Background
     const res = await apiFetch({ action: "getTools", superintendent: currentSuper, staff: "1" });
     if (!res.error && res.data) {
       currentTools = res.data;
@@ -1165,6 +1252,24 @@
     renderStaffTools();
   }
 
+  function isStaffItemSelectable(tool) {
+    if (selectedStaffIndices.size === 0) return true;
+    
+    const firstIdx  = Array.from(selectedStaffIndices)[0];
+    const firstTool = staffToolMap[firstIdx];
+    if (!firstTool) return true;
+
+    if (tool.status !== firstTool.status) return false;
+
+    if (tool.status !== "Available") {
+      const name1 = (firstTool.name || firstTool.checkedOutBy || "").trim().toLowerCase();
+      const name2 = (tool.name || tool.checkedOutBy || "").trim().toLowerCase();
+      if (name1 !== name2) return false;
+    }
+
+    return true;
+  }
+
   function renderStaffTools() {
     const filtered = staffFilter === "all"
       ? currentTools
@@ -1179,135 +1284,295 @@
     staffToolCounter = 0;
 
     document.getElementById("staff-tool-list").innerHTML = filtered.map(t => {
-      const idx       = staffToolCounter++;
+      const idx = staffToolCounter++;
       staffToolMap[idx] = t;
-      const pillClass = t.status === "Available"
+
+      const isSelected   = selectedStaffIndices.has(idx);
+      const selectable   = isStaffItemSelectable(t);
+      const disabledClass = !selectable ? " staff-card-disabled" : "";
+      const selectedClass = isSelected ? " selected" : "";
+      const pillClass     = t.status === "Available"
         ? "pill-available"
         : t.status === "Requested"
         ? "pill-requested"
         : "pill-checkedout";
+
+      const personName = t.name || t.checkedOutBy || "";
+
       return `
-        <div class="staff-tool-card" onclick="openStaffActionModal(${idx})">
+        <div class="staff-tool-card${disabledClass}${selectedClass}"
+             id="stc-${idx}"
+             onclick="${selectable ? `toggleStaffToolSelect(${idx})` : ''}">
+          <div class="tool-check" id="schk-${idx}"><span class="tool-check-tick">✓</span></div>
           <div class="staff-tool-left">
             <div class="staff-tool-name">${t.toolName}</div>
-            <div class="staff-tool-id">ID: ${t.toolId}${t.checkedOutBy ? " · " + t.checkedOutBy : ""}</div>
+            <div class="staff-tool-id">ID: ${t.toolId}${personName ? " · " + personName : ""}</div>
           </div>
           <span class="status-pill ${pillClass}">${t.status}</span>
         </div>`;
     }).join("");
+
+    updateStaffSelectionBar();
   }
 
-  function staffBack() {
-    if (staffSupers.length > 1) {
-      openStaffSuperModal();
+  function toggleStaffToolSelect(idx) {
+    if (selectedStaffIndices.has(idx)) {
+      selectedStaffIndices.delete(idx);
     } else {
-      showView("view-super-select");
-      staffSupers = [];
-      currentSuper = null;
+      selectedStaffIndices.add(idx);
+    }
+    renderStaffTools();
+  }
+
+  function updateStaffSelectionBar() {
+    const bar   = document.getElementById("staff-selection-bar");
+    const count = selectedStaffIndices.size;
+
+    if (count > 0) {
+      document.getElementById("staff-selection-count").textContent = `${count} item${count !== 1 ? "s" : ""} selected`;
+      
+      const firstIdx  = Array.from(selectedStaffIndices)[0];
+      const firstTool = staffToolMap[firstIdx];
+      const actionsContainer = document.getElementById("staff-selection-actions");
+
+      if (firstTool.status === "Available") {
+        actionsContainer.innerHTML = `<button class="selection-bar-btn" onclick="openStaffBatchActionModal('checkOut')">Check Out</button>`;
+      } else if (firstTool.status === "Requested") {
+        actionsContainer.innerHTML = `
+          <button class="selection-bar-btn btn-danger-bar" onclick="openStaffBatchActionModal('cancel')">Cancel Request</button>
+          <button class="selection-bar-btn" onclick="openStaffBatchActionModal('checkOut')">Confirm Check Out</button>
+        `;
+      } else if (firstTool.status === "Checked Out") {
+        actionsContainer.innerHTML = `<button class="selection-bar-btn" onclick="openStaffBatchActionModal('checkIn')">Check In</button>`;
+      }
+
+      bar.classList.add("visible");
+    } else {
+      bar.classList.remove("visible");
     }
   }
 
-  // ── Staff action modal ────────────────────────────────────────────────────
-  function openStaffActionModal(idx) {
-    const tool = staffToolMap[idx];
-    if (!tool) { console.error("Tool not found for index", idx); return; }
-    currentStaffTool = tool;
+  function clearStaffSelection() {
+    selectedStaffIndices.clear();
+    const bar = document.getElementById("staff-selection-bar");
+    if (bar) bar.classList.remove("visible");
+    renderStaffTools();
+  }
 
-    document.getElementById("staff-action-title").textContent    = tool.toolName;
-    document.getElementById("staff-action-subtitle").textContent = `ID: ${tool.toolId} · Status: ${tool.status}`;
-    document.getElementById("staff-action-name").value           = tool.checkedOutBy || "";
+  // ── Staff Batch Action Modal (With Tool ID Dropdown) ──────────────────────
+  function openStaffBatchActionModal(actionType) {
+    if (selectedStaffIndices.size === 0) return;
 
-    const btn   = document.getElementById("staff-action-btn");
-    const label = document.getElementById("staff-action-label");
+    currentStaffAction = actionType;
+    const selectedIndices = Array.from(selectedStaffIndices);
+    const selectedItems   = selectedIndices.map(i => staffToolMap[i]);
+    const firstItem       = selectedItems[0];
+    const defaultName     = firstItem.name || firstItem.checkedOutBy || "";
 
-    if (tool.status === "Available") {
-      btn.textContent = "Check Out";
-      btn.className   = "btn btn-warning";
-      label.textContent = "Checking Out To";
-    } else if (tool.status === "Requested") {
-      btn.textContent = "Confirm Check Out";
-      btn.className   = "btn btn-warning";
-      label.textContent = "Checking Out To";
-    } else {
-      btn.textContent = "Check In";
-      btn.className   = "btn btn-success";
-      label.textContent = "Returned By";
+    const titleEl    = document.getElementById("staff-action-title");
+    const subTitleEl = document.getElementById("staff-action-subtitle");
+    const nameWrap   = document.getElementById("staff-action-name-wrap");
+    const nameInput  = document.getElementById("staff-action-name");
+    const labelEl    = document.getElementById("staff-action-label");
+    const btn        = document.getElementById("staff-action-btn");
+    const itemsList  = document.getElementById("staff-action-items-list");
+
+    nameInput.value = defaultName;
+
+    // Render items with Tool ID dropdowns for checkout
+    if (actionType === "checkOut") {
+      titleEl.textContent    = selectedItems.length > 1 ? `Check Out ${selectedItems.length} Items` : "Check Out Tool";
+      subTitleEl.textContent = `Superintendent: ${currentSuper}`;
+      labelEl.textContent    = "Checking Out To";
+      btn.textContent        = selectedItems.length > 1 ? `Confirm Check Out (${selectedItems.length})` : "Confirm Check Out";
+      btn.className          = "btn btn-warning";
+      nameWrap.style.display = "block";
+
+      const allSuperTools = staffToolsInMemory[currentSuper] || [];
+
+      itemsList.innerHTML = selectedItems.map((item, i) => {
+        // Find all Tool IDs for this toolName that are current unit OR status Available
+        const matchingUnits = allSuperTools.filter(u => u.toolName === item.toolName);
+        const validUnits    = matchingUnits.filter(u => u.toolId === item.toolId || u.status === "Available");
+
+        const optionsHtml = validUnits.map(u => {
+          const isSel = u.toolId === item.toolId ? "selected" : "";
+          const tag   = u.toolId === item.toolId ? ` (${item.status})` : " (Available)";
+          return `<option value="${u.toolId}" ${isSel}>ID: ${u.toolId}${tag}</option>`;
+        }).join("");
+
+        return `
+          <div style="background:#f8f9fa; padding:10px 12px; border-radius:8px; display:flex; justify-content:space-between; align-items:center; gap:8px;">
+            <div style="min-width:0; flex:1;">
+              <div style="font-weight:600; font-size:14px; color:#1a1a2e;">${item.toolName}</div>
+              <div style="font-size:11px; color:#888;">Orig Requested ID: ${item.toolId}</div>
+            </div>
+            <select class="staff-tool-id-select" data-orig-id="${item.toolId}" data-tool-name="${item.toolName}" style="padding:6px 8px; border-radius:6px; border:1.5px solid #e0e0e0; font-size:13px; font-weight:600; background:#fff; color:#1a1a2e;">
+              ${optionsHtml}
+            </select>
+          </div>`;
+      }).join("");
+
+    } else if (actionType === "cancel") {
+      titleEl.textContent    = selectedItems.length > 1 ? `Cancel ${selectedItems.length} Requests` : "Cancel Request";
+      subTitleEl.textContent = `Revert items back to Available status`;
+      btn.textContent        = selectedItems.length > 1 ? `Cancel ${selectedItems.length} Requests` : "Cancel Request";
+      btn.className          = "btn btn-danger";
+      nameWrap.style.display = "none";
+
+      itemsList.innerHTML = selectedItems.map(item => `
+        <div style="background:#f8f9fa; padding:10px 12px; border-radius:8px; font-size:14px; font-weight:600;">
+          ${item.toolName} <span style="font-size:12px; font-weight:normal; color:#888;">(ID: ${item.toolId})</span>
+        </div>`).join("");
+
+    } else if (actionType === "checkIn") {
+      titleEl.textContent    = selectedItems.length > 1 ? `Check In ${selectedItems.length} Items` : "Check In Tool";
+      subTitleEl.textContent = `Superintendent: ${currentSuper}`;
+      labelEl.textContent    = "Returned By";
+      btn.textContent        = selectedItems.length > 1 ? `Check In (${selectedItems.length})` : "Check In Tool";
+      btn.className          = "btn btn-success";
+      nameWrap.style.display = "block";
+
+      itemsList.innerHTML = selectedItems.map(item => `
+        <div style="background:#f8f9fa; padding:10px 12px; border-radius:8px; font-size:14px; font-weight:600;">
+          ${item.toolName} <span style="font-size:12px; font-weight:normal; color:#888;">(ID: ${item.toolId})</span>
+        </div>`).join("");
     }
 
     btn.disabled = false;
-    document.getElementById("staff-action-cancel").style.display = "";
     document.getElementById("staff-action-modal").classList.add("active");
   }
 
   function closeStaffActionModal() {
     document.getElementById("staff-action-modal").classList.remove("active");
-    currentStaffTool = null;
+    currentStaffAction = null;
   }
 
   function closeStaffActionOnOverlay(e) {
     if (e.target === document.getElementById("staff-action-modal")) closeStaffActionModal();
   }
 
-  async function submitStaffAction() {
-    if (!currentStaffTool) { alert("No tool selected. Please try again."); return; }
+  async function submitStaffBatchAction() {
+    if (isSubmitting) return;
+
     const name = document.getElementById("staff-action-name").value.trim();
-    if (!name) { alert("Please enter a name."); return; }
-
-    const isCheckIn    = currentStaffTool.status === "Checked Out";
-    const action       = isCheckIn ? "checkIn" : "checkOut";
-    const savedToolName = currentStaffTool.toolName;
-    const savedToolId   = currentStaffTool.toolId;
-    const newStatus     = isCheckIn ? "Available" : "Checked Out";
-    const newCheckedBy  = isCheckIn ? "" : name;
-
-    const prevTools      = currentTools.map(t => ({...t}));
-    const prevStaffTools = staffToolsInMemory[currentSuper]
-      ? staffToolsInMemory[currentSuper].map(t => ({...t}))
-      : null;
-
-    function applyUpdate(tools) {
-      return tools.map(t =>
-        (t.toolName === savedToolName && String(t.toolId) === String(savedToolId))
-          ? {...t, status: newStatus, checkedOutBy: newCheckedBy}
-          : t
-      );
-    }
-
-    currentTools = applyUpdate(currentTools);
-    if (staffToolsInMemory[currentSuper]) {
-      staffToolsInMemory[currentSuper] = applyUpdate(staffToolsInMemory[currentSuper]);
-    }
-    if (toolsInMemory[currentSuper]) {
-      toolsInMemory[currentSuper] = applyUpdate(toolsInMemory[currentSuper]);
-    }
-
-    lsClear(BUNDLE_CACHE_KEY);
-    closeStaffActionModal();
-    renderStaffTools();
-
-    const msg = isCheckIn
-      ? `${savedToolName} (ID: ${savedToolId}) has been checked back in.`
-      : `${savedToolName} (ID: ${savedToolId}) checked out to ${name}.`;
-    showToast(isCheckIn ? "✓ Checked In!" : "✓ Checked Out!", msg);
-
-    const res = await apiFetch({ action, superintendent: currentSuper, toolName: savedToolName, toolId: savedToolId, name });
-
-    if (res.error) {
-      currentTools = prevTools;
-      if (prevStaffTools) staffToolsInMemory[currentSuper] = prevStaffTools;
-      renderStaffTools();
-      dismissToast();
-      alert("Action failed: " + res.error + ". The change has been reverted.");
+    if (currentStaffAction !== "cancel" && !name) {
+      alert("Please enter a name.");
       return;
     }
 
-    apiFetch({ action: "getTools", superintendent: currentSuper, staff: "1" }).then(r => {
-      if (r.data) {
-        staffToolsInMemory[currentSuper] = r.data;
-        currentTools = r.data;
-        renderStaffTools();
+    isSubmitting = true;
+    const btn = document.getElementById("staff-action-btn");
+    if (btn) btn.disabled = true;
+
+    try {
+      const selectedIndices = Array.from(selectedStaffIndices);
+      const selectedItems   = selectedIndices.map(i => staffToolMap[i]);
+
+      const prevTools      = currentTools.map(t => ({...t}));
+      const prevStaffTools = staffToolsInMemory[currentSuper] ? staffToolsInMemory[currentSuper].map(t => ({...t})) : null;
+
+      let apiEndpointAction = "";
+      let payloadItems = [];
+
+      if (currentStaffAction === "checkOut") {
+        apiEndpointAction = selectedItems.length > 1 ? "checkOuts" : "checkOut";
+        
+        // Read selected Tool IDs from dropdowns
+        const dropdowns = document.querySelectorAll(".staff-tool-id-select");
+        dropdowns.forEach((dd, i) => {
+          const origId   = dd.dataset.origId;
+          const chosenId = dd.value;
+          const tName    = dd.dataset.toolName;
+          payloadItems.push({ toolName: tName, toolId: chosenId, originalToolId: origId, name: name });
+        });
+
+        // Optimistic local state update
+        payloadItems.forEach(item => {
+          if (item.originalToolId && item.originalToolId !== item.toolId) {
+            // Revert original requested tool back to Available
+            if (staffToolsInMemory[currentSuper]) {
+              const origIdx = staffToolsInMemory[currentSuper].findIndex(u => u.toolName === item.toolName && u.toolId === item.originalToolId);
+              if (origIdx > -1) staffToolsInMemory[currentSuper][origIdx] = {...staffToolsInMemory[currentSuper][origIdx], status: "Available", name: "", checkedOutBy: ""};
+            }
+          }
+          // Set chosen tool to Checked Out
+          if (staffToolsInMemory[currentSuper]) {
+            const targetIdx = staffToolsInMemory[currentSuper].findIndex(u => u.toolName === item.toolName && u.toolId === item.toolId);
+            if (targetIdx > -1) staffToolsInMemory[currentSuper][targetIdx] = {...staffToolsInMemory[currentSuper][targetIdx], status: "Checked Out", name: name, checkedOutBy: name};
+          }
+        });
+
+      } else if (currentStaffAction === "cancel") {
+        apiEndpointAction = selectedItems.length > 1 ? "cancelRequests" : "cancelRequest";
+        payloadItems = selectedItems.map(item => ({ toolName: item.toolName, toolId: item.toolId, name: name }));
+
+        payloadItems.forEach(item => {
+          if (staffToolsInMemory[currentSuper]) {
+            const idx = staffToolsInMemory[currentSuper].findIndex(u => u.toolName === item.toolName && u.toolId === item.toolId);
+            if (idx > -1) staffToolsInMemory[currentSuper][idx] = {...staffToolsInMemory[currentSuper][idx], status: "Available", name: "", checkedOutBy: ""};
+          }
+        });
+
+      } else if (currentStaffAction === "checkIn") {
+        apiEndpointAction = selectedItems.length > 1 ? "checkIns" : "checkIn";
+        payloadItems = selectedItems.map(item => ({ toolName: item.toolName, toolId: item.toolId, name: name }));
+
+        payloadItems.forEach(item => {
+          if (staffToolsInMemory[currentSuper]) {
+            const idx = staffToolsInMemory[currentSuper].findIndex(u => u.toolName === item.toolName && u.toolId === item.toolId);
+            if (idx > -1) staffToolsInMemory[currentSuper][idx] = {...staffToolsInMemory[currentSuper][idx], status: "Available", name: "", checkedOutBy: ""};
+          }
+        });
       }
-    });
+
+      // Sync toolsInMemory (Available list) for Electrician view
+      if (staffToolsInMemory[currentSuper]) {
+        toolsInMemory[currentSuper] = staffToolsInMemory[currentSuper].filter(t => t.status === "Available");
+        currentTools = staffToolsInMemory[currentSuper];
+      }
+
+      lsClear(BUNDLE_CACHE_KEY);
+      closeStaffActionModal();
+      clearStaffSelection();
+
+      const toastTitle = currentStaffAction === "checkOut" ? "✓ Checked Out!" : currentStaffAction === "cancel" ? "✓ Request Cancelled!" : "✓ Checked In!";
+      const toastMsg   = `${payloadItems.length} item${payloadItems.length !== 1 ? "s" : ""} updated.`;
+      showToast(toastTitle, toastMsg);
+
+      // Call API
+      let apiParams = { action: apiEndpointAction, superintendent: currentSuper, name: name };
+      if (selectedItems.length > 1) {
+        apiParams.items = payloadItems;
+      } else {
+        apiParams.toolName       = payloadItems[0].toolName;
+        apiParams.toolId         = payloadItems[0].toolId;
+        apiParams.originalToolId = payloadItems[0].originalToolId;
+      }
+
+      const res = await apiFetch(apiParams);
+
+      if (res.error) {
+        currentTools = prevTools;
+        if (prevStaffTools) staffToolsInMemory[currentSuper] = prevStaffTools;
+        renderStaffTools();
+        dismissToast();
+        alert("Action failed: " + res.error + ". Changes reverted.");
+        return;
+      }
+
+      apiFetch({ action: "getTools", superintendent: currentSuper, staff: "1" }).then(r => {
+        if (r.data) {
+          staffToolsInMemory[currentSuper] = r.data;
+          toolsInMemory[currentSuper]      = r.data.filter(t => t.status === "Available");
+          currentTools = r.data;
+          renderStaffTools();
+        }
+      });
+    } finally {
+      isSubmitting = false;
+      if (btn) btn.disabled = false;
+    }
   }
 
   // ── Toast ─────────────────────────────────────────────────────────────────
