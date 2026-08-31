@@ -625,7 +625,29 @@
 </div>
 
 <script>
-  const SCRIPT_URL = "https://script.google.com/macros/s/AKfycby44y8pbzlNJSUMkg6j6AOD3a8VWhlJcjA7O9uPVPW2WC9ygYsGUi9RekLYO7STXsU/exec";
+  const SCRIPT_URL     = "YOUR_APPS_SCRIPT_URL_HERE";
+  const CONFIG_CACHE_KEY = "tooling_config";
+  const CONFIG_TTL       = 60 * 60 * 1000;  // 1 hour
+  const TOOLS_TTL        = 2  * 60 * 1000;  // 2 minutes
+
+  // ── LocalStorage cache helpers ─────────────────────────────────────────
+  function lsSet(key, data) {
+    try { localStorage.setItem(key, JSON.stringify({ data, ts: Date.now() })); } catch {}
+  }
+
+  function lsGet(key, ttl) {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return null;
+      const p = JSON.parse(raw);
+      if (Date.now() - p.ts > ttl) return null;
+      return p.data;
+    } catch { return null; }
+  }
+
+  function lsClear(key) {
+    try { localStorage.removeItem(key); } catch {}
+  }
 
   // ── State ─────────────────────────────────────────────────────────────────
   let allSupers        = [];   // [{ name, initials }]
@@ -657,10 +679,30 @@
 
   // ── Init ──────────────────────────────────────────────────────────────────
   async function init() {
+    // Try localStorage first -- show instantly
+    const cached = lsGet(CONFIG_CACHE_KEY, CONFIG_TTL);
+    if (cached) {
+      configData = cached;
+      allSupers  = [...new Set(configData.map(r => r.superintendent))];
+      renderSuperGrid();
+      // Refresh in background silently
+      apiFetch({ action: "getConfig" }).then(res => {
+        if (res.data && res.data.length > 0) {
+          configData = res.data;
+          allSupers  = [...new Set(configData.map(r => r.superintendent))];
+          lsSet(CONFIG_CACHE_KEY, configData);
+          renderSuperGrid();
+        }
+      }).catch(() => {});
+      return;
+    }
+
+    // No cache -- fetch fresh
     try {
-      const res = await apiFetch({ action: "getConfig" });
+      const res  = await apiFetch({ action: "getConfig" });
       configData = res.data || [];
       allSupers  = [...new Set(configData.map(r => r.superintendent))];
+      lsSet(CONFIG_CACHE_KEY, configData);
       renderSuperGrid();
     } catch {
       document.getElementById("super-grid").innerHTML = `<div class="empty" style="grid-column:span 2">Failed to load. Check connection.</div>`;
@@ -683,12 +725,25 @@
   async function selectSuper(encodedName) {
     currentSuper = decodeURIComponent(encodedName);
     document.getElementById("tool-list-title").textContent = currentSuper;
-    document.getElementById("tool-list").innerHTML = `<div class="loading">Loading...</div>`;
     showView("view-tool-list");
 
+    const toolCacheKey = "tools_" + currentSuper;
+    const cached = lsGet(toolCacheKey, TOOLS_TTL);
+    if (cached) {
+      currentTools = cached;
+      renderToolList();
+      // Refresh in background
+      apiFetch({ action: "getTools", superintendent: currentSuper }).then(res => {
+        if (res.data) { currentTools = res.data; lsSet(toolCacheKey, res.data); renderToolList(); }
+      }).catch(() => {});
+      return;
+    }
+
+    document.getElementById("tool-list").innerHTML = `<div class="loading">Loading...</div>`;
     try {
-      const res = await apiFetch({ action: "getTools", superintendent: currentSuper });
+      const res    = await apiFetch({ action: "getTools", superintendent: currentSuper });
       currentTools = res.data || [];
+      lsSet(toolCacheKey, currentTools);
       renderToolList();
     } catch {
       document.getElementById("tool-list").innerHTML = `<div class="empty">Failed to load tools.</div>`;
@@ -783,9 +838,11 @@
       btn.className   = "btn btn-success-state";
       closeRequestModal();
 
-      // Refresh tool list
+      // Invalidate cache and refresh tool list
+      lsClear("tools_" + currentSuper);
       const toolRes = await apiFetch({ action: "getTools", superintendent: currentSuper });
       currentTools = toolRes.data || [];
+      lsSet("tools_" + currentSuper, currentTools);
       renderToolList();
 
       showToast("✓ Request Sent!", `The material handler has been notified. Your ${currentRequestTool} will be prepared for you.`);
@@ -892,8 +949,9 @@
   }
 
   async function loadStaffTools() {
+    // Staff always gets fresh data (needs all statuses including Requested)
     try {
-      const res = await apiFetch({ action: "getTools", superintendent: currentSuper, staff: "1" });
+      const res    = await apiFetch({ action: "getTools", superintendent: currentSuper, staff: "1" });
       currentTools = res.data || [];
       renderStaffTools();
     } catch {
@@ -1015,6 +1073,7 @@
         return;
       }
 
+      lsClear("tools_" + currentSuper);
       closeStaffActionModal();
       await loadStaffTools();
 
