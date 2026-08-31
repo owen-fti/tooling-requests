@@ -743,19 +743,19 @@
   }
 
   // ── State ─────────────────────────────────────────────────────────────────
-  let allSupers        = [];   // [{ name, initials }]
-  let configData       = [];   // [{ superintendent, email, pin }]
-  let currentSuper     = null; // selected superintendent name
-  let currentTools     = [];   // tools for current super
-  let staffSupers      = [];   // supers accessible to logged-in staff
+  let allSupers        = [];   
+  let configData       = [];   
+  let currentSuper     = null; 
+  let currentTools     = [];   
+  let staffSupers      = [];   
   let staffFilter      = "all";
-  let currentStaffTool = null; // tool being acted on by staff
+  let currentStaffTool = null; 
   let pinBuffer        = "";
   let toastTimer       = null;
-  let toolsInMemory      = {};   // preloaded available tools { superintendentName: [...] }
-  let selectedTools     = new Set(); // tool names selected by electrician
-  let staffToolsInMemory = {}; // preloaded staff tools with all statuses { superintendentName: [...] }
-  let staffToolMap       = {}; // index -> tool object for staff onclick
+  let toolsInMemory      = {};   
+  let selectedTools     = new Set(); 
+  let staffToolsInMemory = {}; 
+  let staffToolMap       = {}; 
   let staffToolCounter   = 0;
 
   // ── API ───────────────────────────────────────────────────────────────────
@@ -785,12 +785,11 @@
 
   // ── Init ──────────────────────────────────────────────────────────────────
   async function init() {
-    // 1. Instant Render from LocalStorage if available
     const cached = lsGet(BUNDLE_CACHE_KEY, CONFIG_TTL);
     if (cached) {
       applyBundleData(cached);
       renderSuperGrid();
-      // Silent background refresh
+      // Background revalidation
       apiFetch({ action: "getInitialData" }).then(res => {
         if (res.config && res.toolsBySuper) {
           lsSet(BUNDLE_CACHE_KEY, res);
@@ -801,7 +800,6 @@
       return;
     }
 
-    // 2. Cold Start: Single Bulk Fetch
     const res = await apiFetch({ action: "getInitialData" });
     if (res.error || !res.config) {
       document.getElementById("super-grid").innerHTML = `<div class="empty" style="grid-column:span 2">Failed to load. Check connection.</div>`;
@@ -846,38 +844,29 @@
       </div>`).join("");
   }
 
-  // ── Electrician: select super ─────────────────────────────────────────────
+  // ── Electrician: select super (Stale-While-Revalidate) ────────────────────
   async function selectSuper(encodedName) {
     currentSuper = decodeURIComponent(encodedName);
     document.getElementById("tool-list-title").textContent = currentSuper;
     showView("view-tool-list");
 
-    const toolCacheKey = "tools_" + currentSuper;
-
+    // 1. Render Cache Immediately (0ms)
     if (toolsInMemory[currentSuper]) {
       currentTools = toolsInMemory[currentSuper];
       renderToolList();
-      return;
+    } else {
+      document.getElementById("tool-list").innerHTML = `<div class="loading">Loading...</div>`;
     }
 
-    const cached = lsGet(toolCacheKey, TOOLS_TTL);
-    if (cached) {
-      currentTools = cached;
-      toolsInMemory[currentSuper] = cached;
-      renderToolList();
-      return;
-    }
-
-    document.getElementById("tool-list").innerHTML = `<div class="loading">Loading...</div>`;
-    const res = await apiFetch({ action: "getTools", superintendent: currentSuper });
-    if (res.error) {
-      document.getElementById("tool-list").innerHTML = `<div class="empty">Failed to load tools.</div>`;
-      return;
-    }
-    currentTools = res.data || [];
-    toolsInMemory[currentSuper] = currentTools;
-    lsSet(toolCacheKey, currentTools);
-    renderToolList();
+    // 2. Always Revalidate in Background
+    apiFetch({ action: "getTools", superintendent: currentSuper }).then(res => {
+      if (!res.error && res.data) {
+        currentTools = res.data;
+        toolsInMemory[currentSuper] = res.data;
+        lsSet("tools_" + currentSuper, res.data);
+        renderToolList();
+      }
+    });
   }
 
   function renderToolList() {
@@ -999,19 +988,34 @@
     const tools   = currentRequestTool ? [currentRequestTool] : currentRequestTools;
     const isMulti = tools.length > 1;
 
-    const snapshot = currentTools.map(t => Object.assign({}, t));
+    // Snapshot for rollback
+    const snapshotElec  = currentTools.map(t => Object.assign({}, t));
+    const snapshotStaff = staffToolsInMemory[currentSuper] ? staffToolsInMemory[currentSuper].map(t => Object.assign({}, t)) : null;
 
-    const flipped = currentTools.slice();
-    tools.forEach(function(toolName) {
-      const idx = flipped.findIndex(t => t.toolName === toolName && t.status === "Available");
+    // Dual Optimistic Update: Electrician View
+    const flippedElec = currentTools.slice();
+    tools.forEach(toolName => {
+      const idx = flippedElec.findIndex(t => t.toolName === toolName && t.status === "Available");
       if (idx > -1) {
-        flipped[idx] = Object.assign({}, flipped[idx], { status: "Requested", checkedOutBy: name });
+        flippedElec[idx] = Object.assign({}, flippedElec[idx], { status: "Requested", checkedOutBy: name });
       }
     });
+    currentTools = flippedElec;
+    toolsInMemory[currentSuper] = flippedElec;
 
-    currentTools = flipped;
-    toolsInMemory[currentSuper] = flipped;
+    // Dual Optimistic Update: Staff View
+    if (staffToolsInMemory[currentSuper]) {
+      const flippedStaff = staffToolsInMemory[currentSuper].slice();
+      tools.forEach(toolName => {
+        const idx = flippedStaff.findIndex(t => t.toolName === toolName && t.status === "Available");
+        if (idx > -1) {
+          flippedStaff[idx] = Object.assign({}, flippedStaff[idx], { status: "Requested", checkedOutBy: name });
+        }
+      });
+      staffToolsInMemory[currentSuper] = flippedStaff;
+    }
 
+    lsClear(BUNDLE_CACHE_KEY); // Clear bundle cache so fresh state is fetched next restart
     closeRequestModal();
     clearSelection();
     renderToolList();
@@ -1029,21 +1033,18 @@
     });
 
     if (res.error) {
-      currentTools = snapshot;
-      toolsInMemory[currentSuper] = snapshot;
+      currentTools = snapshotElec;
+      toolsInMemory[currentSuper] = snapshotElec;
+      if (snapshotStaff) staffToolsInMemory[currentSuper] = snapshotStaff;
       renderToolList();
       dismissToast();
       alert("Request failed: " + res.error);
       return;
     }
 
-    apiFetch({ action: "getTools", superintendent: currentSuper }).then(function(toolRes) {
-      if (toolRes.data) {
-        currentTools = toolRes.data;
-        toolsInMemory[currentSuper] = toolRes.data;
-        lsSet("tools_" + currentSuper, toolRes.data);
-        renderToolList();
-      }
+    // Background confirmation
+    apiFetch({ action: "getTools", superintendent: currentSuper, staff: "1" }).then(r => {
+      if (r.data) staffToolsInMemory[currentSuper] = r.data;
     });
   }
 
@@ -1127,11 +1128,10 @@
     await enterStaffView(decodeURIComponent(encodedName));
   }
 
-  // ── Staff view ────────────────────────────────────────────────────────────
+  // ── Staff view (Stale-While-Revalidate) ───────────────────────────────────
   async function enterStaffView(superName) {
     currentSuper = superName;
     document.getElementById("staff-title").textContent = superName;
-    document.getElementById("staff-tool-list").innerHTML = `<div class="loading">Loading...</div>`;
     showView("view-staff-tools");
     staffFilter = "all";
     document.querySelectorAll(".filter-tab").forEach(t => t.classList.toggle("active", t.dataset.filter === "all"));
@@ -1139,19 +1139,23 @@
   }
 
   async function loadStaffTools() {
+    // 1. Render Cache Immediately (0ms)
     if (staffToolsInMemory[currentSuper] && staffToolsInMemory[currentSuper].length > 0) {
       currentTools = staffToolsInMemory[currentSuper];
       renderStaffTools();
-      return;
+    } else {
+      document.getElementById("staff-tool-list").innerHTML = `<div class="loading">Loading...</div>`;
     }
+
+    // 2. Always Revalidate in Background
     const res = await apiFetch({ action: "getTools", superintendent: currentSuper, staff: "1" });
-    if (res.error) {
+    if (!res.error && res.data) {
+      currentTools = res.data;
+      staffToolsInMemory[currentSuper] = res.data;
+      renderStaffTools();
+    } else if (!staffToolsInMemory[currentSuper]) {
       document.getElementById("staff-tool-list").innerHTML = `<div class="empty">Failed to load tools.</div>`;
-      return;
     }
-    currentTools = res.data || [];
-    staffToolsInMemory[currentSuper] = currentTools;
-    renderStaffTools();
   }
 
   function setStaffFilter(btn) {
@@ -1275,9 +1279,9 @@
     }
     if (toolsInMemory[currentSuper]) {
       toolsInMemory[currentSuper] = applyUpdate(toolsInMemory[currentSuper]);
-      lsSet("tools_" + currentSuper, toolsInMemory[currentSuper]);
     }
 
+    lsClear(BUNDLE_CACHE_KEY);
     closeStaffActionModal();
     renderStaffTools();
 
@@ -1301,7 +1305,6 @@
       if (r.data) {
         staffToolsInMemory[currentSuper] = r.data;
         currentTools = r.data;
-        lsClear("tools_" + currentSuper);
         renderStaffTools();
       }
     });
