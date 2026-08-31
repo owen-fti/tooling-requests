@@ -251,6 +251,28 @@
     .pill-requested  { background: #fef3c7; color: #92400e; }
     .pill-checkedout { background: #fee2e2; color: #991b1b; }
 
+    .condition-check-wrap {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      background: #f8f9fa;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 14px;
+      cursor: pointer;
+      font-size: 13px;
+      color: #444;
+      line-height: 1.4;
+    }
+    .condition-check-wrap input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      flex-shrink: 0;
+      accent-color: #4f46e5;
+      margin-top: 1px;
+      cursor: pointer;
+    }
+
     /* ── History panel ── */
     .history-search-wrap { padding: 0 0 8px; }
     .history-search-wrap input {
@@ -806,8 +828,13 @@
       <label id="staff-action-label">Name</label>
       <input type="text" id="staff-action-name"
         placeholder="Enter name..."
-        autocomplete="name" autocorrect="off" spellcheck="false" />
+        autocomplete="name" autocorrect="off" spellcheck="false"
+        oninput="updateActionBtnState()" />
     </div>
+    <label class="condition-check-wrap" id="condition-check-wrap">
+      <input type="checkbox" id="condition-check" onchange="updateActionBtnState()" />
+      <span id="condition-check-label">I confirm this tool is in good working condition</span>
+    </label>
     <button class="btn" id="staff-action-btn" onclick="submitStaffBatchAction()"></button>
     <button class="btn btn-cancel" id="staff-action-cancel" onclick="closeStaffActionModal()">Cancel</button>
   </div>
@@ -1526,13 +1553,46 @@
         </div>`).join("");
     }
 
-    btn.disabled = false;
+    // Checkbox: reset and set label based on action type
+    const condChk   = document.getElementById("condition-check");
+    const condLabel = document.getElementById("condition-check-label");
+    const condWrap  = document.getElementById("condition-check-wrap");
+    if (condChk) condChk.checked = false;
+    if (condWrap) condWrap.style.display = (actionType === "cancel") ? "none" : "flex";
+    if (condLabel) {
+      condLabel.textContent = (actionType === "checkIn")
+        ? "I confirm this tool has been returned in good working condition"
+        : "I confirm this tool is in good working condition";
+    }
+    // Button starts disabled -- enabled when name + checkbox are both satisfied
+    btn.disabled = (actionType !== "cancel");
     document.getElementById("staff-action-modal").classList.add("active");
   }
 
   function closeStaffActionModal() {
     document.getElementById("staff-action-modal").classList.remove("active");
     currentStaffAction = null;
+    // Reset condition checkbox
+    const chk = document.getElementById("condition-check");
+    if (chk) chk.checked = false;
+    updateActionBtnState();
+  }
+
+  // Enable action button only when name is entered AND condition checkbox checked.
+  // Cancel actions skip the checkbox requirement.
+  function updateActionBtnState() {
+    const name   = (document.getElementById("staff-action-name") || {}).value || "";
+    const chk    = document.getElementById("condition-check");
+    const btn    = document.getElementById("staff-action-btn");
+    const wrap   = document.getElementById("condition-check-wrap");
+    const isCancel = wrap && wrap.style.display === "none"; // cancel hides the checkbox
+    if (btn) {
+      if (isCancel) {
+        btn.disabled = false;
+      } else {
+        btn.disabled = !(name.trim() && chk && chk.checked);
+      }
+    }
   }
 
   function closeStaffActionOnOverlay(e) {
@@ -1741,7 +1801,7 @@
     document.getElementById("staff-history-list").innerHTML = `<div class="loading">Loading...</div>`;
     const res = await apiFetch({ action: "getHistory", superintendent: currentSuper });
     if (res.data) {
-      _staffHistory = res.data;
+      _staffHistory = res.data.slice().reverse(); // newest first
       renderHistory();
     } else {
       document.getElementById("staff-history-list").innerHTML = `<div class="empty">Failed to load history.</div>`;
