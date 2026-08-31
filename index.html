@@ -1035,14 +1035,47 @@
     const name = document.getElementById("request-name").value.trim();
     if (!name) { alert("Please enter your name."); return; }
 
-    const btn     = document.getElementById("request-btn");
-    btn.textContent = "Sending...";
-    btn.disabled    = true;
-    document.getElementById("request-cancel").style.display = "none";
-
     const tools   = currentRequestTool ? [currentRequestTool] : currentRequestTools;
     const isMulti = tools.length > 1;
 
+    // -- Optimistic update: mark selected tools as Requested locally right away
+    // Each tool type: decrement available count by marking one unit Requested
+    const updatedTools = currentTools.map(t => {
+      if (tools.includes(t.toolName) && t.status === "Available") {
+        // Mark the first available unit of each requested tool as Requested
+        const alreadyCounted = updatedTools
+          ? updatedTools.filter(u => u.toolName === t.toolName && u.status === "Requested").length
+          : 0;
+        const originalRequested = currentTools.filter(u => u.toolName === t.toolName && u.status === "Requested").length;
+        if (alreadyCounted <= originalRequested) {
+          return Object.assign({}, t, { status: "Requested", checkedOutBy: name });
+        }
+      }
+      return t;
+    });
+
+    // Simpler approach: for each requested tool name, flip exactly one Available unit to Requested
+    const snapshot    = currentTools.map(t => Object.assign({}, t));
+    const flippedTools = currentTools.slice();
+    tools.forEach(function(toolName) {
+      const idx = flippedTools.findIndex(t => t.toolName === toolName && t.status === "Available");
+      if (idx > -1) flippedTools[idx] = Object.assign({}, flippedTools[idx], { status: "Requested", checkedOutBy: name });
+    });
+
+    currentTools = flippedTools;
+    toolsInMemory[currentSuper] = flippedTools;
+
+    // Close modal + render immediately
+    closeRequestModal();
+    clearSelection();
+    renderToolList();
+
+    const toastMsg = isMulti
+      ? `${tools.length} tools requested. The material handler has been notified.`
+      : `Your ${tools[0]} will be prepared for you.`;
+    showToast("✓ Request Sent!", toastMsg);
+
+    // Send to server in background
     const res = await apiFetch({
       action:         "requestTools",
       superintendent: currentSuper,
@@ -1051,30 +1084,24 @@
     });
 
     if (res.error) {
-      alert(res.error);
-      btn.textContent = isMulti ? `Request ${tools.length} Tools` : "Request Tool";
-      btn.disabled    = false;
-      document.getElementById("request-cancel").style.display = "";
+      // Rollback optimistic update
+      currentTools = snapshot;
+      toolsInMemory[currentSuper] = snapshot;
+      renderToolList();
+      dismissToast();
+      alert("Request failed: " + res.error);
       return;
     }
 
-    closeRequestModal();
-    clearSelection();
-
-    lsClear("tools_" + currentSuper);
-    delete toolsInMemory[currentSuper];
-    const toolRes = await apiFetch({ action: "getTools", superintendent: currentSuper });
-    if (toolRes.data) {
-      currentTools = toolRes.data;
-      toolsInMemory[currentSuper] = currentTools;
-      lsSet("tools_" + currentSuper, currentTools);
-      renderToolList();
-    }
-
-    const toastMsg = isMulti
-      ? `${tools.length} tools requested. The material handler has been notified.`
-      : `Your ${tools[0]} will be prepared for you.`;
-    showToast("✓ Request Sent!", toastMsg);
+    // Confirm with server state silently in background
+    apiFetch({ action: "getTools", superintendent: currentSuper }).then(function(toolRes) {
+      if (toolRes.data) {
+        currentTools = toolRes.data;
+        toolsInMemory[currentSuper] = toolRes.data;
+        lsSet("tools_" + currentSuper, toolRes.data);
+        renderToolList();
+      }
+    });
   }
 
   // ── PIN modal ─────────────────────────────────────────────────────────────
