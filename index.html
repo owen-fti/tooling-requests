@@ -502,11 +502,11 @@
       margin-bottom: 8px;
     }
 
-    .btn:disabled     { opacity: 0.6; }
-    .btn-primary      { background: #4f46e5; color: #fff; }
-    .btn-success      { background: #059669; color: #fff; }
-    .btn-warning      { background: #d97706; color: #fff; }
-    .btn-cancel       { background: #f2f4f7; color: #666; }
+    .btn:disabled      { opacity: 0.6; }
+    .btn-primary       { background: #4f46e5; color: #fff; }
+    .btn-success       { background: #059669; color: #fff; }
+    .btn-warning       { background: #d97706; color: #fff; }
+    .btn-cancel        { background: #f2f4f7; color: #666; }
     .btn-success-state { background: #059669; color: #fff; }
 
     /* ── Toast ── */
@@ -602,10 +602,10 @@
   </div>
   <div class="page-content">
     <div class="filter-tabs" id="staff-filter-tabs">
-      <button class="filter-tab active" data-filter="all"       onclick="setStaffFilter(this)">All</button>
-      <button class="filter-tab"        data-filter="Available" onclick="setStaffFilter(this)">Available</button>
-      <button class="filter-tab"        data-filter="Requested" onclick="setStaffFilter(this)">Requested</button>
-      <button class="filter-tab"        data-filter="Checked Out" onclick="setStaffFilter(this)">Checked Out</button>
+      <button class="filter-tab active" data-filter="all"        onclick="setStaffFilter(this)">All</button>
+      <button class="filter-tab"         data-filter="Available" onclick="setStaffFilter(this)">Available</button>
+      <button class="filter-tab"         data-filter="Requested" onclick="setStaffFilter(this)">Requested</button>
+      <button class="filter-tab"         data-filter="Checked Out" onclick="setStaffFilter(this)">Checked Out</button>
     </div>
     <div class="tool-list" id="staff-tool-list">
       <div class="loading">Loading...</div>
@@ -718,8 +718,8 @@
 </div>
 
 <script>
-  const SCRIPT_URL     = "https://script.google.com/macros/s/AKfycby44y8pbzlNJSUMkg6j6AOD3a8VWhlJcjA7O9uPVPW2WC9ygYsGUi9RekLYO7STXsU/exec";
-  const CONFIG_CACHE_KEY = "tooling_config";
+  const SCRIPT_URL       = "https://script.google.com/macros/s/AKfycby44y8pbzlNJSUMkg6j6AOD3a8VWhlJcjA7O9uPVPW2WC9ygYsGUi9RekLYO7STXsU/exec";
+  const BUNDLE_CACHE_KEY = "tooling_bundle_data";
   const CONFIG_TTL       = 60 * 60 * 1000;  // 1 hour
   const TOOLS_TTL        = 2  * 60 * 1000;  // 2 minutes
 
@@ -752,9 +752,9 @@
   let currentStaffTool = null; // tool being acted on by staff
   let pinBuffer        = "";
   let toastTimer       = null;
-  let toolsInMemory     = {};   // in-memory preloaded tools { superintendentName: [...] }
+  let toolsInMemory      = {};   // preloaded available tools { superintendentName: [...] }
   let selectedTools     = new Set(); // tool names selected by electrician
-  let staffToolsInMemory = {}; // in-memory preloaded staff tools (all statuses)
+  let staffToolsInMemory = {}; // preloaded staff tools with all statuses { superintendentName: [...] }
   let staffToolMap       = {}; // index -> tool object for staff onclick
   let staffToolCounter   = 0;
 
@@ -785,69 +785,51 @@
 
   // ── Init ──────────────────────────────────────────────────────────────────
   async function init() {
-    // Try localStorage first -- show instantly
-    const cached = lsGet(CONFIG_CACHE_KEY, CONFIG_TTL);
+    // 1. Instant Render from LocalStorage if available
+    const cached = lsGet(BUNDLE_CACHE_KEY, CONFIG_TTL);
     if (cached) {
-      configData = cached;
-      allSupers  = [...new Set(configData.map(r => r.superintendent))];
+      applyBundleData(cached);
       renderSuperGrid();
-      preloadAllTools();
-      // Refresh config in background
-      apiFetch({ action: "getConfig" }).then(res => {
-        if (res.data && res.data.length > 0) {
-          configData = res.data;
-          allSupers  = [...new Set(configData.map(r => r.superintendent))];
-          lsSet(CONFIG_CACHE_KEY, configData);
+      // Silent background refresh
+      apiFetch({ action: "getInitialData" }).then(res => {
+        if (res.config && res.toolsBySuper) {
+          lsSet(BUNDLE_CACHE_KEY, res);
+          applyBundleData(res);
           renderSuperGrid();
         }
       });
       return;
     }
 
-    // No cache -- fetch fresh
-    const res = await apiFetch({ action: "getConfig" });
-    if (res.error) {
+    // 2. Cold Start: Single Bulk Fetch
+    const res = await apiFetch({ action: "getInitialData" });
+    if (res.error || !res.config) {
       document.getElementById("super-grid").innerHTML = `<div class="empty" style="grid-column:span 2">Failed to load. Check connection.</div>`;
       return;
     }
-    configData = res.data || [];
-    allSupers  = [...new Set(configData.map(r => r.superintendent))];
-    lsSet(CONFIG_CACHE_KEY, configData);
+
+    lsSet(BUNDLE_CACHE_KEY, res);
+    applyBundleData(res);
     renderSuperGrid();
-    preloadAllTools();
   }
 
-  // Preload all superintendent tool data in parallel on page load
-  // Fetches both electrician view (Available only) and staff view (all statuses)
-  async function preloadAllTools() {
-    if (!allSupers.length) return;
+  function applyBundleData(bundle) {
+    configData = bundle.config || [];
+    allSupers  = [...new Set(configData.map(r => r.superintendent))];
 
-    // Fetch electrician view and staff view simultaneously for all supers
-    const [elecResults, staffResults] = await Promise.all([
-      Promise.allSettled(allSupers.map(name => apiFetch({ action: "getTools", superintendent: name }))),
-      Promise.allSettled(allSupers.map(name => apiFetch({ action: "getTools", superintendent: name, staff: "1" })))
-    ]);
-
-    allSupers.forEach((name, i) => {
-      const elec  = elecResults[i];
-      const staff = staffResults[i];
-      if (elec.status  === "fulfilled" && elec.value.data)  {
-        toolsInMemory[name] = elec.value.data;
-        lsSet("tools_" + name, elec.value.data);
-      }
-      if (staff.status === "fulfilled" && staff.value.data) {
-        staffToolsInMemory[name] = staff.value.data;
-      }
-    });
+    const rawTools = bundle.toolsBySuper || {};
+    for (const [superName, tools] of Object.entries(rawTools)) {
+      staffToolsInMemory[superName] = tools;
+      toolsInMemory[superName]      = tools.filter(t => t.status === "Available");
+    }
   }
 
-  // Manual refresh -- clears all caches and reloads everything
   async function manualRefresh() {
     const btn = document.getElementById("refresh-btn");
     if (btn) { btn.textContent = "↻"; btn.classList.add("spinning"); }
-    lsClear(CONFIG_CACHE_KEY);
-    allSupers.forEach(name => lsClear("tools_" + name));
+    lsClear(BUNDLE_CACHE_KEY);
     toolsInMemory = {};
+    staffToolsInMemory = {};
     await init();
     if (btn) { btn.classList.remove("spinning"); btn.textContent = "↻"; }
   }
@@ -872,40 +854,20 @@
 
     const toolCacheKey = "tools_" + currentSuper;
 
-    // 1. In-memory (instant)
     if (toolsInMemory[currentSuper]) {
       currentTools = toolsInMemory[currentSuper];
       renderToolList();
-      // Silent background refresh
-      apiFetch({ action: "getTools", superintendent: currentSuper }).then(res => {
-        if (res.data) {
-          toolsInMemory[currentSuper] = res.data;
-          lsSet(toolCacheKey, res.data);
-          currentTools = res.data;
-          renderToolList();
-        }
-      });
       return;
     }
 
-    // 2. localStorage (fast)
     const cached = lsGet(toolCacheKey, TOOLS_TTL);
     if (cached) {
       currentTools = cached;
       toolsInMemory[currentSuper] = cached;
       renderToolList();
-      apiFetch({ action: "getTools", superintendent: currentSuper }).then(res => {
-        if (res.data) {
-          toolsInMemory[currentSuper] = res.data;
-          lsSet(toolCacheKey, res.data);
-          currentTools = res.data;
-          renderToolList();
-        }
-      });
       return;
     }
 
-    // 3. Fetch fresh
     document.getElementById("tool-list").innerHTML = `<div class="loading">Loading...</div>`;
     const res = await apiFetch({ action: "getTools", superintendent: currentSuper });
     if (res.error) {
@@ -919,7 +881,6 @@
   }
 
   function renderToolList() {
-    // Group by tool name, count available
     const groups = {};
     currentTools.forEach(t => {
       if (!groups[t.toolName]) groups[t.toolName] = { available: 0, total: 0 };
@@ -990,7 +951,7 @@
 
   // ── Electrician: request modal ────────────────────────────────────────────
   let currentRequestTool = null;
-  let currentRequestTools = []; // for multi-tool requests
+  let currentRequestTools = [];
 
   function openMultiRequestModal() {
     const tools = Array.from(selectedTools);
@@ -1038,10 +999,8 @@
     const tools   = currentRequestTool ? [currentRequestTool] : currentRequestTools;
     const isMulti = tools.length > 1;
 
-    // Snapshot for rollback
     const snapshot = currentTools.map(t => Object.assign({}, t));
 
-    // Optimistic update: flip one Available unit per requested tool to Requested
     const flipped = currentTools.slice();
     tools.forEach(function(toolName) {
       const idx = flipped.findIndex(t => t.toolName === toolName && t.status === "Available");
@@ -1053,7 +1012,6 @@
     currentTools = flipped;
     toolsInMemory[currentSuper] = flipped;
 
-    // Close modal and update UI immediately
     closeRequestModal();
     clearSelection();
     renderToolList();
@@ -1063,7 +1021,6 @@
       : `Your ${tools[0]} will be prepared for you.`;
     showToast("\u2713 Request Sent!", toastMsg);
 
-    // Sync to server in background
     const res = await apiFetch({
       action:         "requestTools",
       superintendent: currentSuper,
@@ -1072,7 +1029,6 @@
     });
 
     if (res.error) {
-      // Rollback
       currentTools = snapshot;
       toolsInMemory[currentSuper] = snapshot;
       renderToolList();
@@ -1081,7 +1037,6 @@
       return;
     }
 
-    // Silently confirm with server state
     apiFetch({ action: "getTools", superintendent: currentSuper }).then(function(toolRes) {
       if (toolRes.data) {
         currentTools = toolRes.data;
@@ -1131,7 +1086,6 @@
 
   async function verifyPin() {
     const enteredPin = pinBuffer;
-    // Find supers matching this PIN
     const matched = configData.filter(r => String(r.pin) === enteredPin);
     if (matched.length === 0) {
       document.getElementById("pin-error").style.display = "block";
@@ -1142,13 +1096,6 @@
 
     closePinModal();
     staffSupers = matched.map(r => r.superintendent);
-
-    // Preload all staff tool data in parallel for this PIN's supers
-    staffSupers.forEach(name => {
-      apiFetch({ action: "getTools", superintendent: name, staff: "1" }).then(res => {
-        if (res.data) staffToolsInMemory[name] = res.data;
-      });
-    });
 
     if (staffSupers.length === 1) {
       await enterStaffView(staffSupers[0]);
@@ -1192,21 +1139,11 @@
   }
 
   async function loadStaffTools() {
-    // Check in-memory cache first (populated on login)
     if (staffToolsInMemory[currentSuper] && staffToolsInMemory[currentSuper].length > 0) {
       currentTools = staffToolsInMemory[currentSuper];
       renderStaffTools();
-      // Refresh in background
-      apiFetch({ action: "getTools", superintendent: currentSuper, staff: "1" }).then(res => {
-        if (res.data) {
-          staffToolsInMemory[currentSuper] = res.data;
-          currentTools = res.data;
-          renderStaffTools();
-        }
-      });
       return;
     }
-    // No cache -- fetch fresh
     const res = await apiFetch({ action: "getTools", superintendent: currentSuper, staff: "1" });
     if (res.error) {
       document.getElementById("staff-tool-list").innerHTML = `<div class="empty">Failed to load tools.</div>`;
@@ -1234,8 +1171,7 @@
       return;
     }
 
-    // Reset index map for safe onclick lookup
-    staffToolMap     = {};
+    staffToolMap       = {};
     staffToolCounter = 0;
 
     document.getElementById("staff-tool-list").innerHTML = filtered.map(t => {
@@ -1269,7 +1205,6 @@
 
   // ── Staff action modal ────────────────────────────────────────────────────
   function openStaffActionModal(idx) {
-    // idx is an integer key into staffToolMap -- avoids encoding issues
     const tool = staffToolMap[idx];
     if (!tool) { console.error("Tool not found for index", idx); return; }
     currentStaffTool = tool;
@@ -1321,13 +1256,11 @@
     const newStatus     = isCheckIn ? "Available" : "Checked Out";
     const newCheckedBy  = isCheckIn ? "" : name;
 
-    // ── Snapshot for rollback ───────────────────────────────────────────
     const prevTools      = currentTools.map(t => ({...t}));
     const prevStaffTools = staffToolsInMemory[currentSuper]
       ? staffToolsInMemory[currentSuper].map(t => ({...t}))
       : null;
 
-    // ── Optimistic update -- change local state immediately ─────────────
     function applyUpdate(tools) {
       return tools.map(t =>
         (t.toolName === savedToolName && String(t.toolId) === String(savedToolId))
@@ -1345,7 +1278,6 @@
       lsSet("tools_" + currentSuper, toolsInMemory[currentSuper]);
     }
 
-    // ── Close modal + render + toast immediately ────────────────────────
     closeStaffActionModal();
     renderStaffTools();
 
@@ -1354,11 +1286,9 @@
       : `${savedToolName} (ID: ${savedToolId}) checked out to ${name}.`;
     showToast(isCheckIn ? "✓ Checked In!" : "✓ Checked Out!", msg);
 
-    // ── Sync to server in background ────────────────────────────────────
     const res = await apiFetch({ action, superintendent: currentSuper, toolName: savedToolName, toolId: savedToolId, name });
 
     if (res.error) {
-      // Rollback optimistic update
       currentTools = prevTools;
       if (prevStaffTools) staffToolsInMemory[currentSuper] = prevStaffTools;
       renderStaffTools();
@@ -1367,7 +1297,6 @@
       return;
     }
 
-    // Confirm with server state in background (don't block UI)
     apiFetch({ action: "getTools", superintendent: currentSuper, staff: "1" }).then(r => {
       if (r.data) {
         staffToolsInMemory[currentSuper] = r.data;
