@@ -1340,7 +1340,7 @@
       } else if (firstTool.status === "Requested") {
         actionsContainer.innerHTML = `
           <button class="selection-bar-btn btn-danger-bar" onclick="openStaffBatchActionModal('cancel')">Cancel Request</button>
-          <button class="selection-bar-btn" onclick="openStaffBatchActionModal('checkOut')">Confirm Check Out</button>
+          <button class="selection-bar-btn" onclick="openStaffBatchActionModal('checkOut')">Check Out</button>
         `;
       } else if (firstTool.status === "Checked Out") {
         actionsContainer.innerHTML = `<button class="selection-bar-btn" onclick="openStaffBatchActionModal('checkIn')">Check In</button>`;
@@ -1390,7 +1390,7 @@
 
       const allSuperTools = staffToolsInMemory[currentSuper] || [];
 
-      itemsList.innerHTML = selectedItems.map((item, i) => {
+      itemsList.innerHTML = selectedItems.map((item) => {
         // Find all Tool IDs for this toolName that are current unit OR status Available
         const matchingUnits = allSuperTools.filter(u => u.toolName === item.toolName);
         const validUnits    = matchingUnits.filter(u => u.toolId === item.toolId || u.status === "Available");
@@ -1455,8 +1455,9 @@
   async function submitStaffBatchAction() {
     if (isSubmitting) return;
 
+    const savedAction = currentStaffAction; // Store action BEFORE modal close
     const name = document.getElementById("staff-action-name").value.trim();
-    if (currentStaffAction !== "cancel" && !name) {
+    if (savedAction !== "cancel" && !name) {
       alert("Please enter a name.");
       return;
     }
@@ -1475,35 +1476,31 @@
       let apiEndpointAction = "";
       let payloadItems = [];
 
-      if (currentStaffAction === "checkOut") {
+      if (savedAction === "checkOut") {
         apiEndpointAction = selectedItems.length > 1 ? "checkOuts" : "checkOut";
         
-        // Read selected Tool IDs from dropdowns
         const dropdowns = document.querySelectorAll(".staff-tool-id-select");
-        dropdowns.forEach((dd, i) => {
+        dropdowns.forEach((dd) => {
           const origId   = dd.dataset.origId;
           const chosenId = dd.value;
           const tName    = dd.dataset.toolName;
           payloadItems.push({ toolName: tName, toolId: chosenId, originalToolId: origId, name: name });
         });
 
-        // Optimistic local state update
         payloadItems.forEach(item => {
           if (item.originalToolId && item.originalToolId !== item.toolId) {
-            // Revert original requested tool back to Available
             if (staffToolsInMemory[currentSuper]) {
               const origIdx = staffToolsInMemory[currentSuper].findIndex(u => u.toolName === item.toolName && u.toolId === item.originalToolId);
               if (origIdx > -1) staffToolsInMemory[currentSuper][origIdx] = {...staffToolsInMemory[currentSuper][origIdx], status: "Available", name: "", checkedOutBy: ""};
             }
           }
-          // Set chosen tool to Checked Out
           if (staffToolsInMemory[currentSuper]) {
             const targetIdx = staffToolsInMemory[currentSuper].findIndex(u => u.toolName === item.toolName && u.toolId === item.toolId);
             if (targetIdx > -1) staffToolsInMemory[currentSuper][targetIdx] = {...staffToolsInMemory[currentSuper][targetIdx], status: "Checked Out", name: name, checkedOutBy: name};
           }
         });
 
-      } else if (currentStaffAction === "cancel") {
+      } else if (savedAction === "cancel") {
         apiEndpointAction = selectedItems.length > 1 ? "cancelRequests" : "cancelRequest";
         payloadItems = selectedItems.map(item => ({ toolName: item.toolName, toolId: item.toolId, name: name }));
 
@@ -1514,7 +1511,7 @@
           }
         });
 
-      } else if (currentStaffAction === "checkIn") {
+      } else if (savedAction === "checkIn") {
         apiEndpointAction = selectedItems.length > 1 ? "checkIns" : "checkIn";
         payloadItems = selectedItems.map(item => ({ toolName: item.toolName, toolId: item.toolId, name: name }));
 
@@ -1526,7 +1523,6 @@
         });
       }
 
-      // Sync toolsInMemory (Available list) for Electrician view
       if (staffToolsInMemory[currentSuper]) {
         toolsInMemory[currentSuper] = staffToolsInMemory[currentSuper].filter(t => t.status === "Available");
         currentTools = staffToolsInMemory[currentSuper];
@@ -1536,11 +1532,10 @@
       closeStaffActionModal();
       clearStaffSelection();
 
-      const toastTitle = currentStaffAction === "checkOut" ? "✓ Checked Out!" : currentStaffAction === "cancel" ? "✓ Request Cancelled!" : "✓ Checked In!";
+      const toastTitle = savedAction === "checkOut" ? "✓ Checked Out!" : savedAction === "cancel" ? "✓ Request Cancelled!" : "✓ Checked In!";
       const toastMsg   = `${payloadItems.length} item${payloadItems.length !== 1 ? "s" : ""} updated.`;
       showToast(toastTitle, toastMsg);
 
-      // Call API
       let apiParams = { action: apiEndpointAction, superintendent: currentSuper, name: name };
       if (selectedItems.length > 1) {
         apiParams.items = payloadItems;
