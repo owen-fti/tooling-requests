@@ -38,6 +38,9 @@
     header h1 { font-size: 18px; font-weight: 700; }
     header p  { font-size: 12px; color: #888aaa; }
 
+    .spinning { animation: spin 1s linear infinite; display: inline-block; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
     .staff-btn {
       background: #2e2e4a;
       border: none;
@@ -478,7 +481,10 @@
         <h1>Tooling Requests</h1>
         <p>Select your superintendent</p>
       </div>
-      <button class="staff-btn" onclick="openPinModal()">Staff</button>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button id="refresh-btn" class="staff-btn" onclick="manualRefresh()" style="font-size:15px;padding:6px 10px">↻</button>
+        <button class="staff-btn" onclick="openPinModal()">Staff</button>
+      </div>
     </div>
   </header>
   <div class="page-content">
@@ -659,13 +665,18 @@
   let currentStaffTool = null; // tool being acted on by staff
   let pinBuffer        = "";
   let toastTimer       = null;
+  let toolsInMemory    = {};   // in-memory preloaded tools { superintendentName: [...] }
 
   // ── API ───────────────────────────────────────────────────────────────────
   async function apiFetch(params) {
     const p = {};
     for (const [k, v] of Object.entries(params)) p[k] = Array.isArray(v) ? JSON.stringify(v) : v;
-    const res = await fetch(SCRIPT_URL + "?" + new URLSearchParams(p).toString());
-    try { return await res.json(); } catch { return { error: "non-json response" }; }
+    try {
+      const res = await fetch(SCRIPT_URL + "?" + new URLSearchParams(p).toString());
+      try { return await res.json(); } catch { return { error: "Server returned an unexpected response." }; }
+    } catch (e) {
+      return { error: "Network error. Check your connection and try again." };
+    }
   }
 
   // ── Views ─────────────────────────────────────────────────────────────────
@@ -685,7 +696,8 @@
       configData = cached;
       allSupers  = [...new Set(configData.map(r => r.superintendent))];
       renderSuperGrid();
-      // Refresh in background silently
+      preloadAllTools();
+      // Refresh config in background
       apiFetch({ action: "getConfig" }).then(res => {
         if (res.data && res.data.length > 0) {
           configData = res.data;
@@ -693,20 +705,47 @@
           lsSet(CONFIG_CACHE_KEY, configData);
           renderSuperGrid();
         }
-      }).catch(() => {});
+      });
       return;
     }
 
     // No cache -- fetch fresh
-    try {
-      const res  = await apiFetch({ action: "getConfig" });
-      configData = res.data || [];
-      allSupers  = [...new Set(configData.map(r => r.superintendent))];
-      lsSet(CONFIG_CACHE_KEY, configData);
-      renderSuperGrid();
-    } catch {
+    const res = await apiFetch({ action: "getConfig" });
+    if (res.error) {
       document.getElementById("super-grid").innerHTML = `<div class="empty" style="grid-column:span 2">Failed to load. Check connection.</div>`;
+      return;
     }
+    configData = res.data || [];
+    allSupers  = [...new Set(configData.map(r => r.superintendent))];
+    lsSet(CONFIG_CACHE_KEY, configData);
+    renderSuperGrid();
+    preloadAllTools();
+  }
+
+  // Preload all superintendent tool data in parallel on page load
+  async function preloadAllTools() {
+    if (!allSupers.length) return;
+    const results = await Promise.allSettled(
+      allSupers.map(name => apiFetch({ action: "getTools", superintendent: name }))
+    );
+    allSupers.forEach((name, i) => {
+      const r = results[i];
+      if (r.status === "fulfilled" && r.value.data) {
+        toolsInMemory[name] = r.value.data;
+        lsSet("tools_" + name, r.value.data);
+      }
+    });
+  }
+
+  // Manual refresh -- clears all caches and reloads everything
+  async function manualRefresh() {
+    const btn = document.getElementById("refresh-btn");
+    if (btn) { btn.textContent = "↻"; btn.classList.add("spinning"); }
+    lsClear(CONFIG_CACHE_KEY);
+    allSupers.forEach(name => lsClear("tools_" + name));
+    toolsInMemory = {};
+    await init();
+    if (btn) { btn.classList.remove("spinning"); btn.textContent = "↻"; }
   }
 
   function initials(name) {
@@ -728,26 +767,51 @@
     showView("view-tool-list");
 
     const toolCacheKey = "tools_" + currentSuper;
-    const cached = lsGet(toolCacheKey, TOOLS_TTL);
-    if (cached) {
-      currentTools = cached;
+
+    // 1. In-memory (instant)
+    if (toolsInMemory[currentSuper]) {
+      currentTools = toolsInMemory[currentSuper];
       renderToolList();
-      // Refresh in background
+      // Silent background refresh
       apiFetch({ action: "getTools", superintendent: currentSuper }).then(res => {
-        if (res.data) { currentTools = res.data; lsSet(toolCacheKey, res.data); renderToolList(); }
-      }).catch(() => {});
+        if (res.data) {
+          toolsInMemory[currentSuper] = res.data;
+          lsSet(toolCacheKey, res.data);
+          currentTools = res.data;
+          renderToolList();
+        }
+      });
       return;
     }
 
-    document.getElementById("tool-list").innerHTML = `<div class="loading">Loading...</div>`;
-    try {
-      const res    = await apiFetch({ action: "getTools", superintendent: currentSuper });
-      currentTools = res.data || [];
-      lsSet(toolCacheKey, currentTools);
+    // 2. localStorage (fast)
+    const cached = lsGet(toolCacheKey, TOOLS_TTL);
+    if (cached) {
+      currentTools = cached;
+      toolsInMemory[currentSuper] = cached;
       renderToolList();
-    } catch {
-      document.getElementById("tool-list").innerHTML = `<div class="empty">Failed to load tools.</div>`;
+      apiFetch({ action: "getTools", superintendent: currentSuper }).then(res => {
+        if (res.data) {
+          toolsInMemory[currentSuper] = res.data;
+          lsSet(toolCacheKey, res.data);
+          currentTools = res.data;
+          renderToolList();
+        }
+      });
+      return;
     }
+
+    // 3. Fetch fresh
+    document.getElementById("tool-list").innerHTML = `<div class="loading">Loading...</div>`;
+    const res = await apiFetch({ action: "getTools", superintendent: currentSuper });
+    if (res.error) {
+      document.getElementById("tool-list").innerHTML = `<div class="empty">Failed to load tools.</div>`;
+      return;
+    }
+    currentTools = res.data || [];
+    toolsInMemory[currentSuper] = currentTools;
+    lsSet(toolCacheKey, currentTools);
+    renderToolList();
   }
 
   function renderToolList() {
@@ -1074,6 +1138,7 @@
       }
 
       lsClear("tools_" + currentSuper);
+      delete toolsInMemory[currentSuper];
       closeStaffActionModal();
       await loadStaffTools();
 
@@ -1082,8 +1147,8 @@
         : `${currentStaffTool.toolName} (ID: ${currentStaffTool.toolId}) checked out to ${name}.`;
       showToast(isCheckIn ? "✓ Checked In!" : "✓ Checked Out!", msg);
 
-    } catch {
-      alert("Something went wrong. Please try again.");
+    } catch (e) {
+      alert("Something went wrong: " + (e.message || "Unknown error. Please try again."));
       btn.textContent = isCheckIn ? "Check In" : "Check Out";
       btn.disabled    = false;
       document.getElementById("staff-action-cancel").style.display = "";
