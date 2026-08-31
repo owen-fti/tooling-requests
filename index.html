@@ -665,7 +665,10 @@
   let currentStaffTool = null; // tool being acted on by staff
   let pinBuffer        = "";
   let toastTimer       = null;
-  let toolsInMemory    = {};   // in-memory preloaded tools { superintendentName: [...] }
+  let toolsInMemory     = {};   // in-memory preloaded tools { superintendentName: [...] }
+  let staffToolsInMemory = {}; // in-memory preloaded staff tools (all statuses)
+  let staffToolMap       = {}; // index -> tool object for staff onclick
+  let staffToolCounter   = 0;
 
   // ── API ───────────────────────────────────────────────────────────────────
   async function apiFetch(params) {
@@ -969,11 +972,16 @@
     closePinModal();
     staffSupers = matched.map(r => r.superintendent);
 
+    // Preload all staff tool data in parallel for this PIN's supers
+    staffSupers.forEach(name => {
+      apiFetch({ action: "getTools", superintendent: name, staff: "1" }).then(res => {
+        if (res.data) staffToolsInMemory[name] = res.data;
+      });
+    });
+
     if (staffSupers.length === 1) {
-      // Only one super for this PIN -- go straight in
       await enterStaffView(staffSupers[0]);
     } else {
-      // Multiple supers -- show selection
       openStaffSuperModal();
     }
   }
@@ -1013,14 +1021,29 @@
   }
 
   async function loadStaffTools() {
-    // Staff always gets fresh data (needs all statuses including Requested)
-    try {
-      const res    = await apiFetch({ action: "getTools", superintendent: currentSuper, staff: "1" });
-      currentTools = res.data || [];
+    // Check in-memory cache first (populated on login)
+    if (staffToolsInMemory[currentSuper] && staffToolsInMemory[currentSuper].length > 0) {
+      currentTools = staffToolsInMemory[currentSuper];
       renderStaffTools();
-    } catch {
-      document.getElementById("staff-tool-list").innerHTML = `<div class="empty">Failed to load tools.</div>`;
+      // Refresh in background
+      apiFetch({ action: "getTools", superintendent: currentSuper, staff: "1" }).then(res => {
+        if (res.data) {
+          staffToolsInMemory[currentSuper] = res.data;
+          currentTools = res.data;
+          renderStaffTools();
+        }
+      });
+      return;
     }
+    // No cache -- fetch fresh
+    const res = await apiFetch({ action: "getTools", superintendent: currentSuper, staff: "1" });
+    if (res.error) {
+      document.getElementById("staff-tool-list").innerHTML = `<div class="empty">Failed to load tools.</div>`;
+      return;
+    }
+    currentTools = res.data || [];
+    staffToolsInMemory[currentSuper] = currentTools;
+    renderStaffTools();
   }
 
   function setStaffFilter(btn) {
@@ -1040,15 +1063,20 @@
       return;
     }
 
+    // Reset index map for safe onclick lookup
+    staffToolMap     = {};
+    staffToolCounter = 0;
+
     document.getElementById("staff-tool-list").innerHTML = filtered.map(t => {
+      const idx       = staffToolCounter++;
+      staffToolMap[idx] = t;
       const pillClass = t.status === "Available"
         ? "pill-available"
         : t.status === "Requested"
         ? "pill-requested"
         : "pill-checkedout";
-      const safeT = encodeURIComponent(JSON.stringify(t));
       return `
-        <div class="staff-tool-card" onclick="openStaffActionModal(decodeURIComponent('${safeT}'))">
+        <div class="staff-tool-card" onclick="openStaffActionModal(${idx})">
           <div class="staff-tool-left">
             <div class="staff-tool-name">${t.toolName}</div>
             <div class="staff-tool-id">ID: ${t.toolId}${t.checkedOutBy ? " · " + t.checkedOutBy : ""}</div>
@@ -1069,8 +1097,10 @@
   }
 
   // ── Staff action modal ────────────────────────────────────────────────────
-  function openStaffActionModal(toolJson) {
-    const tool = typeof toolJson === "string" ? JSON.parse(toolJson) : toolJson;
+  function openStaffActionModal(idx) {
+    // idx is an integer key into staffToolMap -- avoids encoding issues
+    const tool = staffToolMap[idx];
+    if (!tool) { console.error("Tool not found for index", idx); return; }
     currentStaffTool = tool;
 
     document.getElementById("staff-action-title").textContent    = tool.toolName;
@@ -1109,6 +1139,7 @@
   }
 
   async function submitStaffAction() {
+    if (!currentStaffTool) { alert("No tool selected. Please try again."); return; }
     const name = document.getElementById("staff-action-name").value.trim();
     if (!name) { alert("Please enter a name."); return; }
 
@@ -1139,6 +1170,7 @@
 
       lsClear("tools_" + currentSuper);
       delete toolsInMemory[currentSuper];
+      delete staffToolsInMemory[currentSuper];
       closeStaffActionModal();
       await loadStaffTools();
 
