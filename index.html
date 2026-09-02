@@ -251,75 +251,6 @@
     .pill-requested  { background: #fef3c7; color: #92400e; }
     .pill-checkedout { background: #fee2e2; color: #991b1b; }
 
-    .condition-check-wrap {
-      display: flex;
-      align-items: flex-start;
-      gap: 10px;
-      background: #f8f9fa;
-      border-radius: 8px;
-      padding: 12px;
-      margin-bottom: 14px;
-      cursor: pointer;
-      font-size: 13px;
-      color: #444;
-      line-height: 1.4;
-    }
-    .condition-check-wrap input[type="checkbox"] {
-      width: 18px;
-      height: 18px;
-      flex-shrink: 0;
-      accent-color: #4f46e5;
-      margin-top: 1px;
-      cursor: pointer;
-    }
-
-    /* ── History panel ── */
-    .history-search-wrap { padding: 0 0 8px; }
-    .history-search-wrap input {
-      width: 100%; padding: 10px 12px; border: none;
-      border-radius: 8px; font-size: 14px;
-      background: #2e2e4a; color: #fff; outline: none;
-      -webkit-appearance: none;
-    }
-    .history-search-wrap input::placeholder { color: #888aaa; }
-
-    .history-zone-filter {
-      display: flex; gap: 0; margin-bottom: 10px;
-    }
-    .hz-btn {
-      flex: 1; padding: 7px 4px; border: none;
-      background: #2e2e4a; color: #888aaa;
-      font-size: 11px; font-weight: 600; cursor: pointer;
-      border-right: 1px solid #1a1a2e;
-      transition: background 0.15s, color 0.15s;
-    }
-    .hz-btn:first-child { border-radius: 8px 0 0 8px; }
-    .hz-btn:last-child  { border-radius: 0 8px 8px 0; border-right: none; }
-    .hz-btn.active      { background: #4f46e5; color: #fff; }
-
-    .history-list { display: flex; flex-direction: column; gap: 8px; }
-
-    .history-card {
-      background: #fff; border-radius: 10px;
-      padding: 11px 13px; box-shadow: 0 1px 3px rgba(0,0,0,0.07);
-    }
-    .history-card-top {
-      display: flex; align-items: flex-start;
-      justify-content: space-between; gap: 8px; margin-bottom: 4px;
-    }
-    .history-action {
-      display: inline-block; font-size: 10px; font-weight: 700;
-      padding: 2px 8px; border-radius: 20px; letter-spacing: 0.3px;
-    }
-    .action-checkout  { background: #fee2e2; color: #991b1b; }
-    .action-checkin   { background: #d1fae5; color: #065f46; }
-    .action-requested { background: #fef3c7; color: #92400e; }
-    .action-cancelled { background: #f3f4f6; color: #6b7280; }
-
-    .history-tool-name { font-size: 13px; font-weight: 600; margin-bottom: 2px; }
-    .history-meta      { font-size: 12px; color: #888; line-height: 1.5; }
-    .history-id        { font-size: 11px; color: #aaa; }
-
     /* ── Filter tabs (staff) ── */
     .filter-tabs {
       display: flex;
@@ -654,6 +585,81 @@
     }
 
     .staff-header h1 { font-size: 17px; font-weight: 700; color: #fff; flex: 1; }
+
+    /* ── Tool unit dropdown ── */
+    .tool-card-container { display: flex; flex-direction: column; margin-bottom: 0; }
+    .tool-card-container .tool-card { border-radius: 10px 10px 0 0; margin-bottom: 0; }
+
+    .units-toggle {
+      background: #fff; border: none; border-top: 1px solid #f0f0f0;
+      color: #4f46e5; font-size: 12px; font-weight: 600;
+      padding: 7px 14px; text-align: left; cursor: pointer;
+      border-radius: 0 0 10px 10px; width: 100%; margin-bottom: 8px;
+    }
+
+    .tool-units-list {
+      background: #fff; border-radius: 0 0 10px 10px;
+      border-top: 1px solid #f0f0f0; overflow: hidden;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 8px;
+    }
+
+    .unit-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 9px 14px; border-bottom: 1px solid #f8f8f8; gap: 10px; font-size: 13px;
+    }
+    .unit-row:last-child { border-bottom: none; }
+    .unit-id   { font-weight: 600; color: #1a1a2e; flex-shrink: 0; }
+    .unit-name { font-size: 11px; color: #888; flex: 1; min-width: 0;
+                 white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .unit-badge {
+      font-size: 10px; font-weight: 700; padding: 2px 8px;
+      border-radius: 20px; flex-shrink: 0; white-space: nowrap;
+    }
+    .unit-avail     { background: #d1fae5; color: #065f46; }
+    .unit-requested { background: #fef3c7; color: #92400e; }
+    .unit-out       { background: #fee2e2; color: #991b1b; }
+    .unit-overdue   { background: #7f1d1d; color: #fff; }
+
+    /* ── History panel ── */
+    .history-search-wrap { padding: 0 0 8px; }
+    .history-search-wrap input {
+      width: 100%; padding: 10px 12px; border: none;
+      border-radius: 8px; font-size: 14px;
+      background: #2e2e4a; color: #fff; outline: none; -webkit-appearance: none;
+    }
+    .history-search-wrap input::placeholder { color: #888aaa; }
+    .history-zone-filter { display: flex; gap: 0; margin-bottom: 10px; }
+    .hz-btn {
+      flex: 1; padding: 7px 4px; border: none; background: #2e2e4a; color: #888aaa;
+      font-size: 11px; font-weight: 600; cursor: pointer;
+      border-right: 1px solid #1a1a2e;
+    }
+    .hz-btn:first-child { border-radius: 8px 0 0 8px; }
+    .hz-btn:last-child  { border-radius: 0 8px 8px 0; border-right: none; }
+    .hz-btn.active      { background: #4f46e5; color: #fff; }
+    .history-list { display: flex; flex-direction: column; gap: 8px; }
+    .history-card { background: #fff; border-radius: 10px; padding: 11px 13px; box-shadow: 0 1px 3px rgba(0,0,0,0.07); }
+    .history-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+    .history-action { display: inline-block; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 20px; letter-spacing: 0.3px; }
+    .action-checkout  { background: #fee2e2; color: #991b1b; }
+    .action-checkin   { background: #d1fae5; color: #065f46; }
+    .action-requested { background: #fef3c7; color: #92400e; }
+    .action-cancelled { background: #f3f4f6; color: #6b7280; }
+    .history-tool-name { font-size: 13px; font-weight: 600; margin-bottom: 2px; }
+    .history-meta      { font-size: 12px; color: #888; line-height: 1.5; }
+    .history-id        { font-size: 11px; color: #aaa; }
+
+    /* ── Condition checkbox ── */
+    .condition-check-wrap {
+      display: flex; align-items: flex-start; gap: 10px;
+      background: #f8f9fa; border-radius: 8px; padding: 12px;
+      margin-bottom: 14px; cursor: pointer; font-size: 13px; color: #444; line-height: 1.4;
+    }
+    .condition-check-wrap input[type="checkbox"] {
+      width: 18px; height: 18px; flex-shrink: 0;
+      accent-color: #4f46e5; margin-top: 1px; cursor: pointer;
+    }
+
   </style>
 </head>
 <body>
@@ -668,7 +674,7 @@
       </div>
       <div style="display:flex;gap:8px;align-items:center">
         <button class="staff-btn refresh-btn-icon" onclick="manualRefresh()" style="font-size:15px;padding:6px 10px">↻</button>
-        <button class="staff-btn" onclick="openPinModal()">Admin Login</button>
+        <button class="staff-btn" onclick="openPinModal()">Staff</button>
       </div>
     </div>
   </header>
@@ -721,20 +727,19 @@
       <div class="loading">Loading...</div>
     </div>
 
-    <!-- History panel (shown when History tab is active) -->
     <div id="staff-history-panel" style="display:none">
       <div class="history-search-wrap">
         <input type="text" id="history-search"
           placeholder="Search tool, ID, name, action, date..."
-          autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+          autocomplete="off" autocorrect="off" spellcheck="false"
           oninput="renderHistory()" />
       </div>
       <div class="history-zone-filter">
-        <button class="hz-btn active" data-hzone="all"        onclick="setHistoryZone(this)">All</button>
-        <button class="hz-btn"        data-hzone="CHECKED OUT"         onclick="setHistoryZone(this)">Checked Out</button>
-        <button class="hz-btn"        data-hzone="CHECKED IN"          onclick="setHistoryZone(this)">Checked In</button>
-        <button class="hz-btn"        data-hzone="REQUESTED"           onclick="setHistoryZone(this)">Requested</button>
-        <button class="hz-btn"        data-hzone="REQUEST CANCELLED"   onclick="setHistoryZone(this)">Cancelled</button>
+        <button class="hz-btn active" data-hzone="all"              onclick="setHistoryZone(this)">All</button>
+        <button class="hz-btn"        data-hzone="CHECKED OUT"      onclick="setHistoryZone(this)">Out</button>
+        <button class="hz-btn"        data-hzone="CHECKED IN"       onclick="setHistoryZone(this)">In</button>
+        <button class="hz-btn"        data-hzone="REQUESTED"        onclick="setHistoryZone(this)">Requested</button>
+        <button class="hz-btn"        data-hzone="REQUEST CANCELLED" onclick="setHistoryZone(this)">Cancelled</button>
       </div>
       <div class="history-list" id="staff-history-list">
         <div class="loading">Loading...</div>
@@ -915,9 +920,7 @@
   let selectedTools      = new Set(); // Electrician selected tool names
   let selectedStaffKeys  = new Set(); // Staff selected unique keys ("toolName|||toolId")
   let currentStaffAction = null;     // 'checkOut', 'checkIn', 'cancel'
-  let staffToolsInMemory = {};
-  let _staffHistory      = [];
-  let historyZoneFilter  = "all"; 
+  let staffToolsInMemory = {}; 
 
   // ── API Fetch with Sync Tracking ─────────────────────────────────────────
   async function apiFetch(params) {
@@ -1049,45 +1052,74 @@
     });
   }
 
+  function buildUnitRows(name) {
+    var units = currentTools.filter(function(t) { return t.toolName === name; });
+    return units.map(function(u) {
+      var overdue    = isOverdue(u.checkedOutAt);
+      var badgeClass = "unit-avail";
+      var badgeText  = "Available";
+      if (u.status === "Requested")               { badgeClass = "unit-requested"; badgeText = "Requested"; }
+      if (u.status === "Checked Out" && !overdue) { badgeClass = "unit-out";       badgeText = "Checked Out"; }
+      if (u.status === "Checked Out" && overdue)  { badgeClass = "unit-overdue";   badgeText = "Overdue ⚠"; }
+      var nameInfo = "";
+      if (u.checkedOutBy) {
+        var t = parseCheckoutTime(u.checkedOutAt);
+        var hrs = (overdue && t) ? " (" + Math.floor((Date.now() - t.getTime()) / 3600000) + "h)" : "";
+        nameInfo = "<span class=\"unit-name\">" + u.checkedOutBy + hrs + "</span>";
+      }
+      return "<div class=\"unit-row\">" +
+               "<span class=\"unit-id\">ID: " + u.toolId + "</span>" +
+               nameInfo +
+               "<span class=\"unit-badge " + badgeClass + "\">" + badgeText + "</span>" +
+             "</div>";
+    }).join("");
+  }
+
   function renderToolList() {
-    const groups = {};
-    currentTools.forEach(t => {
+    var groups = {};
+    currentTools.forEach(function(t) {
       if (!groups[t.toolName]) groups[t.toolName] = { available: 0, total: 0 };
       groups[t.toolName].total++;
       if (t.status === "Available") groups[t.toolName].available++;
     });
-
-    const names = Object.keys(groups);
+    var names = Object.keys(groups);
     if (!names.length) {
-      document.getElementById("tool-list").innerHTML = `<div class="empty">No tools found for this superintendent.</div>`;
+      document.getElementById("tool-list").innerHTML = "<div class=\"empty\">No tools found for this superintendent.</div>";
       return;
     }
-
-    document.getElementById("tool-list").innerHTML = names.map(name => {
-      const g           = groups[name];
-      const avl         = g.available;
-      const tot         = g.total;
-      const unavailable = avl === 0;
-      const badgeClass  = avl === 0 ? "avail-red" : avl <= 1 ? "avail-yellow" : "avail-green";
-      const badgeText   = avl === 0 ? "None available" : `${avl} available`;
-      const isSelected  = selectedTools.has(name);
-      const enc         = encodeURIComponent(name);
-      return `
-        <div class="tool-card${unavailable ? " unavailable" : ""}${isSelected ? " selected" : ""}"
-             id="tc-${enc}"
-             onclick="${unavailable ? "" : `toggleToolSelect('${enc}')`}">
-          ${unavailable ? "" : `<div class="tool-check" id="chk-${enc}"><span class="tool-check-tick">✓</span></div>`}
-          <div class="tool-card-left">
-            <div class="tool-card-name">${name}</div>
-            <div class="tool-card-sub">${tot} unit${tot !== 1 ? "s" : ""} total</div>
-          </div>
-          <span class="avail-badge ${badgeClass}">${badgeText}</span>
-        </div>`;
+    document.getElementById("tool-list").innerHTML = names.map(function(name) {
+      var g           = groups[name];
+      var avl         = g.available;
+      var tot         = g.total;
+      var unavailable = avl === 0;
+      var badgeClass  = avl === 0 ? "avail-red" : avl <= 1 ? "avail-yellow" : "avail-green";
+      var badgeText   = avl === 0 ? "None available" : avl + " available";
+      var isSelected  = selectedTools.has(name);
+      var enc         = encodeURIComponent(name);
+      var cardClass   = "tool-card" + (unavailable ? " unavailable" : "") + (isSelected ? " selected" : "");
+      var clickAttr   = unavailable ? "" : " onclick=\"toggleToolSelect(\'" + enc + "\')\"";
+      var checkbox    = unavailable ? "" : "<div class=\"tool-check\" id=\"chk-" + enc + "\"><span class=\"tool-check-tick\">&#x2713;</span></div>";
+      var unitRows    = buildUnitRows(name);
+      return "<div class=\"tool-card-container\">" +
+               "<div class=\"" + cardClass + "\" id=\"tc-" + enc + "\"" + clickAttr + ">" +
+                 checkbox +
+                 "<div class=\"tool-card-left\">" +
+                   "<div class=\"tool-card-name\">" + name + "</div>" +
+                   "<div class=\"tool-card-sub\">" + tot + " unit" + (tot !== 1 ? "s" : "") + " total</div>" +
+                 "</div>" +
+                 "<span class=\"avail-badge " + badgeClass + "\">" + badgeText + "</span>" +
+               "</div>" +
+               "<button class=\"units-toggle\" id=\"utoggle-" + enc + "\"" +
+                 " onclick=\"toggleUnits(\'" + enc + "\', event)\">" +
+                 "&#9662; Show units" +
+               "</button>" +
+               "<div class=\"tool-units-list\" id=\"units-" + enc + "\" style=\"display:none\">" +
+                 unitRows +
+               "</div>" +
+             "</div>";
     }).join("");
-
     updateSelectionBar();
   }
-
   function toggleToolSelect(enc) {
     const name = decodeURIComponent(enc);
     const card = document.getElementById("tc-" + enc);
@@ -1350,13 +1382,15 @@
     btn.classList.add("active");
     clearStaffSelection();
 
-    const isHistory = staffFilter === "history";
-    document.getElementById("staff-tool-list").style.display    = isHistory ? "none" : "";
-    document.getElementById("staff-history-panel").style.display = isHistory ? "block" : "none";
+    var isHistory = staffFilter === "history";
+    document.getElementById("staff-tool-list").style.display      = isHistory ? "none" : "";
+    document.getElementById("staff-history-panel").style.display  = isHistory ? "block" : "none";
 
     if (isHistory) {
       historyZoneFilter = "all";
-      document.querySelectorAll(".hz-btn").forEach(b => b.classList.toggle("active", b.dataset.hzone === "all"));
+      document.querySelectorAll(".hz-btn").forEach(function(b) {
+        b.classList.toggle("active", b.dataset.hzone === "all");
+      });
       loadStaffHistory();
     }
   }
@@ -1553,10 +1587,10 @@
         </div>`).join("");
     }
 
-    // Checkbox: reset and set label based on action type
-    const condChk   = document.getElementById("condition-check");
-    const condLabel = document.getElementById("condition-check-label");
-    const condWrap  = document.getElementById("condition-check-wrap");
+    // Reset checkbox and disable button until checkbox + name are filled
+    var condChk   = document.getElementById("condition-check");
+    var condLabel = document.getElementById("condition-check-label");
+    var condWrap  = document.getElementById("condition-check-wrap");
     if (condChk) condChk.checked = false;
     if (condWrap) condWrap.style.display = (actionType === "cancel") ? "none" : "flex";
     if (condLabel) {
@@ -1564,35 +1598,16 @@
         ? "I confirm this tool has been returned in good working condition"
         : "I confirm this tool is in good working condition";
     }
-    // Button starts disabled -- enabled when name + checkbox are both satisfied
     btn.disabled = (actionType !== "cancel");
+
     document.getElementById("staff-action-modal").classList.add("active");
   }
 
   function closeStaffActionModal() {
     document.getElementById("staff-action-modal").classList.remove("active");
     currentStaffAction = null;
-    // Reset condition checkbox
-    const chk = document.getElementById("condition-check");
+    var chk = document.getElementById("condition-check");
     if (chk) chk.checked = false;
-    updateActionBtnState();
-  }
-
-  // Enable action button only when name is entered AND condition checkbox checked.
-  // Cancel actions skip the checkbox requirement.
-  function updateActionBtnState() {
-    const name   = (document.getElementById("staff-action-name") || {}).value || "";
-    const chk    = document.getElementById("condition-check");
-    const btn    = document.getElementById("staff-action-btn");
-    const wrap   = document.getElementById("condition-check-wrap");
-    const isCancel = wrap && wrap.style.display === "none"; // cancel hides the checkbox
-    if (btn) {
-      if (isCancel) {
-        btn.disabled = false;
-      } else {
-        btn.disabled = !(name.trim() && chk && chk.checked);
-      }
-    }
   }
 
   function closeStaffActionOnOverlay(e) {
@@ -1730,85 +1745,105 @@
     if (toastTimer) { clearTimeout(toastTimer); toastTimer = null; }
   }
 
-  // ── Staff History ─────────────────────────────────────────────────────────
+
+  // ── Tool unit timestamp parsing ───────────────────────────────────────────
+  function parseCheckoutTime(ts) {
+    if (!ts) return null;
+    var p = String(ts).match(/(\d{2})-(\d{2})-(\d{2}) (\d{2}):(\d{2})/);
+    if (!p) return null;
+    return new Date(2000 + parseInt(p[3]), parseInt(p[1]) - 1,
+                    parseInt(p[2]), parseInt(p[4]), parseInt(p[5]));
+  }
+
+  function isOverdue(checkedOutAt) {
+    var t = parseCheckoutTime(checkedOutAt);
+    return t ? (Date.now() - t.getTime()) > 14 * 60 * 60 * 1000 : false;
+  }
+
+  function toggleUnits(enc, e) {
+    e.stopPropagation();
+    var list = document.getElementById("units-" + enc);
+    var btn  = document.getElementById("utoggle-" + enc);
+    if (!list) return;
+    var open = list.style.display !== "none";
+    list.style.display = open ? "none" : "block";
+    if (btn) btn.textContent = open ? "\u25be Show units" : "\u25b4 Hide units";
+  }
+
+  // ── History state & helpers ───────────────────────────────────────────────
+  var _staffHistory     = [];
+  var historyZoneFilter = "all";
 
   function setHistoryZone(btn) {
     historyZoneFilter = btn.dataset.hzone;
-    document.querySelectorAll(".hz-btn").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".hz-btn").forEach(function(b) { b.classList.remove("active"); });
     btn.classList.add("active");
     renderHistory();
   }
 
-  // Fuzzy multi-token search across all history fields
-  function historyMatchesSearch(query, h) {
-    if (!query) return true;
-    // Build a single searchable string from all fields
-    const hay = [
-      h.toolName, h.toolId, h.action, h.name, h.timestamp, h.superintendent
-    ].join(" ").toLowerCase();
-    // Split query on spaces and hyphens -- all tokens must appear
-    const tokens = query.toLowerCase().split(/[\s\-]+/).filter(Boolean);
-    return tokens.every(t => hay.includes(t));
-  }
-
   function renderHistory() {
-    const query  = (document.getElementById("history-search") || {}).value || "";
-    const zone   = historyZoneFilter;
-
-    let filtered = _staffHistory;
-
-    // Filter by superintendent (show only current super's history)
-    filtered = filtered.filter(h => h.superintendent === currentSuper);
-
-    // Filter by action type
+    var query    = (document.getElementById("history-search") || {}).value || "";
+    var zone     = historyZoneFilter;
+    var filtered = _staffHistory.filter(function(h) {
+      return h.superintendent === currentSuper;
+    });
     if (zone !== "all") {
-      filtered = filtered.filter(h => h.action.toUpperCase() === zone.toUpperCase());
+      filtered = filtered.filter(function(h) {
+        return h.action.toUpperCase() === zone.toUpperCase();
+      });
     }
-
-    // Fuzzy search
     if (query.trim()) {
-      filtered = filtered.filter(h => historyMatchesSearch(query.trim(), h));
+      var tokens = query.trim().toLowerCase().split(/[\s\-]+/).filter(Boolean);
+      filtered = filtered.filter(function(h) {
+        var hay = [h.toolName, h.toolId, h.action, h.name, h.timestamp, h.superintendent].join(" ").toLowerCase();
+        return tokens.every(function(t) { return hay.indexOf(t) > -1; });
+      });
     }
-
-    const listEl = document.getElementById("staff-history-list");
+    var listEl = document.getElementById("staff-history-list");
     if (!filtered.length) {
-      listEl.innerHTML = `<div class="empty">No history found.</div>`;
+      listEl.innerHTML = '<div class="empty">No history found.</div>';
       return;
     }
-
-    listEl.innerHTML = filtered.map(h => {
-      const action   = (h.action || "").toUpperCase();
-      let badgeClass = "action-requested";
-      if      (action === "CHECKED OUT")        badgeClass = "action-checkout";
-      else if (action === "CHECKED IN")         badgeClass = "action-checkin";
-      else if (action === "REQUEST CANCELLED")  badgeClass = "action-cancelled";
-
-      return `
-        <div class="history-card">
-          <div class="history-card-top">
-            <span class="history-action ${badgeClass}">${h.action}</span>
-            <span class="history-id">ID: ${h.toolId || "-"}</span>
-          </div>
-          <div class="history-tool-name">${h.toolName || ""}</div>
-          <div class="history-meta">
-            ${h.name ? `<strong>${h.name}</strong> &middot; ` : ""}${h.timestamp || ""}
-          </div>
-        </div>`;
+    listEl.innerHTML = filtered.map(function(h) {
+      var action     = (h.action || "").toUpperCase();
+      var badgeClass = "action-requested";
+      if      (action === "CHECKED OUT")       badgeClass = "action-checkout";
+      else if (action === "CHECKED IN")        badgeClass = "action-checkin";
+      else if (action === "REQUEST CANCELLED") badgeClass = "action-cancelled";
+      return '<div class="history-card">' +
+        '<div class="history-card-top">' +
+          '<span class="history-action ' + badgeClass + '">' + h.action + '</span>' +
+          '<span class="history-id">ID: ' + (h.toolId || "-") + '</span>' +
+        '</div>' +
+        '<div class="history-tool-name">' + (h.toolName || "") + '</div>' +
+        '<div class="history-meta">' + (h.name ? '<strong>' + h.name + '</strong> &middot; ' : '') + (h.timestamp || "") + '</div>' +
+      '</div>';
     }).join("");
   }
 
   async function loadStaffHistory() {
-    document.getElementById("staff-history-list").innerHTML = `<div class="loading">Loading...</div>`;
-    const res = await apiFetch({ action: "getHistory", superintendent: currentSuper });
+    document.getElementById("staff-history-list").innerHTML = '<div class="loading">Loading...</div>';
+    var res = await apiFetch({ action: "getHistory", superintendent: currentSuper });
     if (res.data) {
-      _staffHistory = res.data.slice().reverse(); // newest first
+      _staffHistory = res.data;
       renderHistory();
     } else {
-      document.getElementById("staff-history-list").innerHTML = `<div class="empty">Failed to load history.</div>`;
+      document.getElementById("staff-history-list").innerHTML = '<div class="empty">Failed to load history.</div>';
     }
   }
 
-  // ── Boot ──────────────────────────────────────────────────────────────────
+  // ── Condition checkbox ────────────────────────────────────────────────────
+  function updateActionBtnState() {
+    var name   = (document.getElementById("staff-action-name") || {}).value || "";
+    var chk    = document.getElementById("condition-check");
+    var btn    = document.getElementById("staff-action-btn");
+    var wrap   = document.getElementById("condition-check-wrap");
+    var isCancel = wrap && wrap.style.display === "none";
+    if (btn) btn.disabled = isCancel ? false : !(name.trim() && chk && chk.checked);
+  }
+
+
+  // ── Boot ──
   init();
 </script>
 </body>
