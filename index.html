@@ -1042,11 +1042,13 @@
       document.getElementById("tool-list").innerHTML = `<div class="loading">Loading...</div>`;
     }
 
-    apiFetch({ action: "getTools", superintendent: currentSuper }).then(res => {
+    const requestedSuper = currentSuper;
+    apiFetch({ action: "getTools", superintendent: requestedSuper }).then(res => {
+      if (currentSuper !== requestedSuper) return; // user navigated away before this resolved
       if (!res.error && res.data) {
         currentTools = res.data;
-        toolsInMemory[currentSuper] = res.data;
-        lsSet("tools_" + currentSuper, res.data);
+        toolsInMemory[requestedSuper] = res.data;
+        lsSet("tools_" + requestedSuper, res.data);
         renderToolList();
       }
     });
@@ -1366,12 +1368,14 @@
       document.getElementById("staff-tool-list").innerHTML = `<div class="loading">Loading...</div>`;
     }
 
-    const res = await apiFetch({ action: "getTools", superintendent: currentSuper, staff: "1" });
+    const requestedSuper = currentSuper;
+    const res = await apiFetch({ action: "getTools", superintendent: requestedSuper, staff: "1" });
+    if (currentSuper !== requestedSuper) return; // user navigated away before this resolved
     if (!res.error && res.data) {
       currentTools = res.data;
-      staffToolsInMemory[currentSuper] = res.data;
+      staffToolsInMemory[requestedSuper] = res.data;
       renderStaffTools();
-    } else if (!staffToolsInMemory[currentSuper]) {
+    } else if (!staffToolsInMemory[requestedSuper]) {
       document.getElementById("staff-tool-list").innerHTML = `<div class="empty">Failed to load tools.</div>`;
     }
   }
