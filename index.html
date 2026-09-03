@@ -935,6 +935,16 @@
     return toolsFetchSeq[superName] !== seq;
   }
 
+  // A background data refresh landing while the staff action modal is open
+  // must not touch the tool list behind it -- rewriting that list's innerHTML
+  // reflows the page and causes the native "ID" <select> dropdown to snap
+  // closed on mobile. Data is still updated; only the visual re-render is
+  // deferred until the modal closes (clearStaffSelection() re-renders then).
+  function isStaffActionModalOpen() {
+    const m = document.getElementById("staff-action-modal");
+    return !!(m && m.classList.contains("active"));
+  }
+
   // ── API Fetch with Sync Tracking ─────────────────────────────────────────
   async function apiFetch(params) {
     activeSyncRequests++;
@@ -1404,7 +1414,7 @@
       toolsInMemory[requestedSuper]      = res.data;
       if (currentSuper === requestedSuper) {
         currentTools = res.data;
-        renderStaffTools();
+        if (!isStaffActionModalOpen()) renderStaffTools();
       }
     } else if (!staffToolsInMemory[requestedSuper] && currentSuper === requestedSuper) {
       document.getElementById("staff-tool-list").innerHTML = `<div class="empty">Failed to load tools.</div>`;
@@ -1643,6 +1653,7 @@
     currentStaffAction = null;
     var chk = document.getElementById("condition-check");
     if (chk) chk.checked = false;
+    renderStaffTools(); // pick up any data refreshed in the background while the modal was open
   }
 
   function closeStaffActionOnOverlay(e) {
@@ -1763,7 +1774,7 @@
           toolsInMemory[targetSuper]      = r.data;
           if (currentSuper === targetSuper) {
             currentTools = r.data;
-            renderStaffTools();
+            if (!isStaffActionModalOpen()) renderStaffTools();
           }
         }
       });
