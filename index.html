@@ -922,6 +922,19 @@
   let currentStaffAction = null;     // 'checkOut', 'checkIn', 'cancel'
   let staffToolsInMemory = {}; 
 
+  // ── Stale-response guard ─────────────────────────────────────────────────
+  // Tracks the most recently issued getTools fetch per superintendent so an
+  // older response that resolves late (e.g. a checkOut's refresh landing
+  // after a subsequent checkIn's refresh) can never overwrite newer data.
+  let toolsFetchSeq = {};
+  function beginToolsFetch(superName) {
+    toolsFetchSeq[superName] = (toolsFetchSeq[superName] || 0) + 1;
+    return toolsFetchSeq[superName];
+  }
+  function isStaleToolsFetch(superName, seq) {
+    return toolsFetchSeq[superName] !== seq;
+  }
+
   // ── API Fetch with Sync Tracking ─────────────────────────────────────────
   async function apiFetch(params) {
     activeSyncRequests++;
@@ -997,7 +1010,7 @@
     const rawTools = bundle.toolsBySuper || {};
     for (const [superName, tools] of Object.entries(rawTools)) {
       staffToolsInMemory[superName] = tools;
-      toolsInMemory[superName]      = tools.filter(t => t.status === "Available");
+      toolsInMemory[superName]      = tools;
     }
   }
 
@@ -1043,13 +1056,17 @@
     }
 
     const requestedSuper = currentSuper;
-    apiFetch({ action: "getTools", superintendent: requestedSuper }).then(res => {
-      if (currentSuper !== requestedSuper) return; // user navigated away before this resolved
+    const seq = beginToolsFetch(requestedSuper);
+    apiFetch({ action: "getTools", superintendent: requestedSuper, staff: "1" }).then(res => {
+      if (isStaleToolsFetch(requestedSuper, seq)) return; // a newer fetch for this super has since started
       if (!res.error && res.data) {
-        currentTools = res.data;
-        toolsInMemory[requestedSuper] = res.data;
+        staffToolsInMemory[requestedSuper] = res.data;
+        toolsInMemory[requestedSuper]      = res.data;
         lsSet("tools_" + requestedSuper, res.data);
-        renderToolList();
+        if (currentSuper === requestedSuper) {
+          currentTools = res.data;
+          renderToolList();
+        }
       }
     });
   }
@@ -1206,11 +1223,12 @@
     if (btn) btn.disabled = true;
 
     try {
+      const targetSuper = currentSuper;
       const tools   = currentRequestTool ? [currentRequestTool] : currentRequestTools;
       const isMulti = tools.length > 1;
 
       const snapshotElec  = currentTools.map(t => Object.assign({}, t));
-      const snapshotStaff = staffToolsInMemory[currentSuper] ? staffToolsInMemory[currentSuper].map(t => Object.assign({}, t)) : null;
+      const snapshotStaff = staffToolsInMemory[targetSuper] ? staffToolsInMemory[targetSuper].map(t => Object.assign({}, t)) : null;
 
       const flippedElec = currentTools.slice();
       tools.forEach(toolName => {
@@ -1220,17 +1238,17 @@
         }
       });
       currentTools = flippedElec;
-      toolsInMemory[currentSuper] = flippedElec;
+      toolsInMemory[targetSuper] = flippedElec;
 
-      if (staffToolsInMemory[currentSuper]) {
-        const flippedStaff = staffToolsInMemory[currentSuper].slice();
+      if (staffToolsInMemory[targetSuper]) {
+        const flippedStaff = staffToolsInMemory[targetSuper].slice();
         tools.forEach(toolName => {
           const idx = flippedStaff.findIndex(t => t.toolName === toolName && t.status === "Available");
           if (idx > -1) {
             flippedStaff[idx] = Object.assign({}, flippedStaff[idx], { status: "Requested", name: name, checkedOutBy: name });
           }
         });
-        staffToolsInMemory[currentSuper] = flippedStaff;
+        staffToolsInMemory[targetSuper] = flippedStaff;
       }
 
       lsClear(BUNDLE_CACHE_KEY);
@@ -1245,23 +1263,32 @@
 
       const res = await apiFetch({
         action:         "requestTools",
-        superintendent: currentSuper,
+        superintendent: targetSuper,
         toolNames:      tools,
         requestedBy:    name
       });
 
       if (res.error) {
         currentTools = snapshotElec;
-        toolsInMemory[currentSuper] = snapshotElec;
-        if (snapshotStaff) staffToolsInMemory[currentSuper] = snapshotStaff;
+        toolsInMemory[targetSuper] = snapshotElec;
+        if (snapshotStaff) staffToolsInMemory[targetSuper] = snapshotStaff;
         renderToolList();
         dismissToast();
         alert("Request failed: " + res.error);
         return;
       }
 
-      apiFetch({ action: "getTools", superintendent: currentSuper, staff: "1" }).then(r => {
-        if (r.data) staffToolsInMemory[currentSuper] = r.data;
+      const seq = beginToolsFetch(targetSuper);
+      apiFetch({ action: "getTools", superintendent: targetSuper, staff: "1" }).then(r => {
+        if (isStaleToolsFetch(targetSuper, seq)) return; // a newer fetch for this super has since started
+        if (r.data) {
+          staffToolsInMemory[targetSuper] = r.data;
+          toolsInMemory[targetSuper]      = r.data;
+          if (currentSuper === targetSuper) {
+            currentTools = r.data;
+            renderToolList();
+          }
+        }
       });
     } finally {
       isSubmitting = false;
@@ -1369,13 +1396,17 @@
     }
 
     const requestedSuper = currentSuper;
+    const seq = beginToolsFetch(requestedSuper);
     const res = await apiFetch({ action: "getTools", superintendent: requestedSuper, staff: "1" });
-    if (currentSuper !== requestedSuper) return; // user navigated away before this resolved
+    if (isStaleToolsFetch(requestedSuper, seq)) return; // a newer fetch for this super has since started
     if (!res.error && res.data) {
-      currentTools = res.data;
       staffToolsInMemory[requestedSuper] = res.data;
-      renderStaffTools();
-    } else if (!staffToolsInMemory[requestedSuper]) {
+      toolsInMemory[requestedSuper]      = res.data;
+      if (currentSuper === requestedSuper) {
+        currentTools = res.data;
+        renderStaffTools();
+      }
+    } else if (!staffToolsInMemory[requestedSuper] && currentSuper === requestedSuper) {
       document.getElementById("staff-tool-list").innerHTML = `<div class="empty">Failed to load tools.</div>`;
     }
   }
@@ -1633,10 +1664,11 @@
     if (btn) btn.disabled = true;
 
     try {
+      const targetSuper   = currentSuper;
       const selectedItems = getSelectedStaffItems();
 
       const prevTools      = currentTools.map(t => ({...t}));
-      const prevStaffTools = staffToolsInMemory[currentSuper] ? staffToolsInMemory[currentSuper].map(t => ({...t})) : null;
+      const prevStaffTools = staffToolsInMemory[targetSuper] ? staffToolsInMemory[targetSuper].map(t => ({...t})) : null;
 
       let apiEndpointAction = "";
       let payloadItems = [];
@@ -1654,14 +1686,14 @@
 
         payloadItems.forEach(item => {
           if (item.originalToolId && item.originalToolId !== item.toolId) {
-            if (staffToolsInMemory[currentSuper]) {
-              const origIdx = staffToolsInMemory[currentSuper].findIndex(u => u.toolName === item.toolName && u.toolId === item.originalToolId);
-              if (origIdx > -1) staffToolsInMemory[currentSuper][origIdx] = {...staffToolsInMemory[currentSuper][origIdx], status: "Available", name: "", checkedOutBy: ""};
+            if (staffToolsInMemory[targetSuper]) {
+              const origIdx = staffToolsInMemory[targetSuper].findIndex(u => u.toolName === item.toolName && u.toolId === item.originalToolId);
+              if (origIdx > -1) staffToolsInMemory[targetSuper][origIdx] = {...staffToolsInMemory[targetSuper][origIdx], status: "Available", name: "", checkedOutBy: ""};
             }
           }
-          if (staffToolsInMemory[currentSuper]) {
-            const targetIdx = staffToolsInMemory[currentSuper].findIndex(u => u.toolName === item.toolName && u.toolId === item.toolId);
-            if (targetIdx > -1) staffToolsInMemory[currentSuper][targetIdx] = {...staffToolsInMemory[currentSuper][targetIdx], status: "Checked Out", name: name, checkedOutBy: name};
+          if (staffToolsInMemory[targetSuper]) {
+            const targetIdx = staffToolsInMemory[targetSuper].findIndex(u => u.toolName === item.toolName && u.toolId === item.toolId);
+            if (targetIdx > -1) staffToolsInMemory[targetSuper][targetIdx] = {...staffToolsInMemory[targetSuper][targetIdx], status: "Checked Out", name: name, checkedOutBy: name};
           }
         });
 
@@ -1670,9 +1702,9 @@
         payloadItems = selectedItems.map(item => ({ toolName: item.toolName, toolId: item.toolId, name: name }));
 
         payloadItems.forEach(item => {
-          if (staffToolsInMemory[currentSuper]) {
-            const idx = staffToolsInMemory[currentSuper].findIndex(u => u.toolName === item.toolName && u.toolId === item.toolId);
-            if (idx > -1) staffToolsInMemory[currentSuper][idx] = {...staffToolsInMemory[currentSuper][idx], status: "Available", name: "", checkedOutBy: ""};
+          if (staffToolsInMemory[targetSuper]) {
+            const idx = staffToolsInMemory[targetSuper].findIndex(u => u.toolName === item.toolName && u.toolId === item.toolId);
+            if (idx > -1) staffToolsInMemory[targetSuper][idx] = {...staffToolsInMemory[targetSuper][idx], status: "Available", name: "", checkedOutBy: ""};
           }
         });
 
@@ -1681,16 +1713,16 @@
         payloadItems = selectedItems.map(item => ({ toolName: item.toolName, toolId: item.toolId, name: name }));
 
         payloadItems.forEach(item => {
-          if (staffToolsInMemory[currentSuper]) {
-            const idx = staffToolsInMemory[currentSuper].findIndex(u => u.toolName === item.toolName && u.toolId === item.toolId);
-            if (idx > -1) staffToolsInMemory[currentSuper][idx] = {...staffToolsInMemory[currentSuper][idx], status: "Available", name: "", checkedOutBy: ""};
+          if (staffToolsInMemory[targetSuper]) {
+            const idx = staffToolsInMemory[targetSuper].findIndex(u => u.toolName === item.toolName && u.toolId === item.toolId);
+            if (idx > -1) staffToolsInMemory[targetSuper][idx] = {...staffToolsInMemory[targetSuper][idx], status: "Available", name: "", checkedOutBy: ""};
           }
         });
       }
 
-      if (staffToolsInMemory[currentSuper]) {
-        toolsInMemory[currentSuper] = staffToolsInMemory[currentSuper].filter(t => t.status === "Available");
-        currentTools = staffToolsInMemory[currentSuper];
+      if (staffToolsInMemory[targetSuper]) {
+        toolsInMemory[targetSuper] = staffToolsInMemory[targetSuper];
+        if (currentSuper === targetSuper) currentTools = staffToolsInMemory[targetSuper];
       }
 
       lsClear(BUNDLE_CACHE_KEY);
@@ -1701,7 +1733,7 @@
       const toastMsg   = `${payloadItems.length} item${payloadItems.length !== 1 ? "s" : ""} updated.`;
       showToast(toastTitle, toastMsg);
 
-      let apiParams = { action: apiEndpointAction, superintendent: currentSuper, name: name };
+      let apiParams = { action: apiEndpointAction, superintendent: targetSuper, name: name };
       if (selectedItems.length > 1) {
         apiParams.items = payloadItems;
       } else {
@@ -1713,20 +1745,26 @@
       const res = await apiFetch(apiParams);
 
       if (res.error) {
-        currentTools = prevTools;
-        if (prevStaffTools) staffToolsInMemory[currentSuper] = prevStaffTools;
-        renderStaffTools();
+        if (currentSuper === targetSuper) {
+          currentTools = prevTools;
+          renderStaffTools();
+        }
+        if (prevStaffTools) staffToolsInMemory[targetSuper] = prevStaffTools;
         dismissToast();
         alert("Action failed: " + res.error + ". Changes reverted.");
         return;
       }
 
-      apiFetch({ action: "getTools", superintendent: currentSuper, staff: "1" }).then(r => {
+      const seq = beginToolsFetch(targetSuper);
+      apiFetch({ action: "getTools", superintendent: targetSuper, staff: "1" }).then(r => {
+        if (isStaleToolsFetch(targetSuper, seq)) return; // a newer fetch for this super has since started
         if (r.data) {
-          staffToolsInMemory[currentSuper] = r.data;
-          toolsInMemory[currentSuper]      = r.data.filter(t => t.status === "Available");
-          currentTools = r.data;
-          renderStaffTools();
+          staffToolsInMemory[targetSuper] = r.data;
+          toolsInMemory[targetSuper]      = r.data;
+          if (currentSuper === targetSuper) {
+            currentTools = r.data;
+            renderStaffTools();
+          }
         }
       });
     } finally {
