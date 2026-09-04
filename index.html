@@ -918,6 +918,7 @@
   let isSubmitting       = false; // Double submit guard
   let toolsInMemory      = {};   
   let selectedTools      = new Set(); // Electrician selected tool names
+  let expandedUnits      = new Set(); // Tool names whose "Show units" list is currently open
   let selectedStaffKeys  = new Set(); // Staff selected unique keys ("toolName|||toolId")
   let currentStaffAction = null;     // 'checkOut', 'checkIn', 'cancel'
   let staffToolsInMemory = {}; 
@@ -1055,6 +1056,7 @@
   // ── Electrician View ──────────────────────────────────────────────────────
   async function selectSuper(encodedName) {
     currentSuper = decodeURIComponent(encodedName);
+    expandedUnits.clear();
     document.getElementById("tool-list-title").textContent = currentSuper;
     showView("view-tool-list");
 
@@ -1129,6 +1131,7 @@
       var clickAttr   = unavailable ? "" : " onclick=\"toggleToolSelect(\'" + enc + "\')\"";
       var checkbox    = unavailable ? "" : "<div class=\"tool-check\" id=\"chk-" + enc + "\"><span class=\"tool-check-tick\">&#x2713;</span></div>";
       var unitRows    = buildUnitRows(name);
+      var isOpen      = expandedUnits.has(name);
       return "<div class=\"tool-card-container\">" +
                "<div class=\"" + cardClass + "\" id=\"tc-" + enc + "\"" + clickAttr + ">" +
                  checkbox +
@@ -1140,9 +1143,9 @@
                "</div>" +
                "<button class=\"units-toggle\" id=\"utoggle-" + enc + "\"" +
                  " onclick=\"toggleUnits(\'" + enc + "\', event)\">" +
-                 "&#9662; Show units" +
+                 (isOpen ? "&#9652; Hide units" : "&#9662; Show units") +
                "</button>" +
-               "<div class=\"tool-units-list\" id=\"units-" + enc + "\" style=\"display:none\">" +
+               "<div class=\"tool-units-list\" id=\"units-" + enc + "\" style=\"display:" + (isOpen ? "block" : "none") + "\">" +
                  unitRows +
                "</div>" +
              "</div>";
@@ -1815,11 +1818,18 @@
 
   function toggleUnits(enc, e) {
     e.stopPropagation();
+    var name = decodeURIComponent(enc);
     var list = document.getElementById("units-" + enc);
     var btn  = document.getElementById("utoggle-" + enc);
     if (!list) return;
     var open = list.style.display !== "none";
-    list.style.display = open ? "none" : "block";
+    if (open) {
+      list.style.display = "none";
+      expandedUnits.delete(name);
+    } else {
+      list.style.display = "block";
+      expandedUnits.add(name);
+    }
     if (btn) btn.textContent = open ? "\u25be Show units" : "\u25b4 Hide units";
   }
 
