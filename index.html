@@ -645,6 +645,11 @@
     .action-checkin   { background: #d1fae5; color: #065f46; }
     .action-requested { background: #fef3c7; color: #92400e; }
     .action-cancelled { background: #f3f4f6; color: #6b7280; }
+    .action-removed   { background: #1f2937; color: #fff; }
+    .staff-badge.operator { background: #059669; }
+    .super-search { width: 100%; padding: 11px 12px; border: 1.5px solid #e0e0e0; border-radius: 8px;
+                    font-size: 14px; margin-bottom: 10px; outline: none; -webkit-appearance: none; }
+    .super-search:focus { border-color: #4f46e5; }
     .history-tool-name { font-size: 13px; font-weight: 600; margin-bottom: 2px; }
     .history-meta      { font-size: 12px; color: #888; line-height: 1.5; }
     .history-id        { font-size: 11px; color: #aaa; }
@@ -713,7 +718,7 @@
     <h1 id="staff-title">Staff View</h1>
     <button class="staff-btn refresh-btn-icon" onclick="manualRefresh()" style="font-size:15px;padding:6px 10px">↻</button>
     <span class="sync-indicator" title="Syncing..."></span>
-    <span class="staff-badge">STAFF</span>
+    <span class="staff-badge" id="staff-badge">STAFF</span>
   </div>
   <div class="page-content">
     <div class="filter-tabs" id="staff-filter-tabs">
@@ -791,6 +796,8 @@
     </div>
     <div class="modal-title">Select Superintendent</div>
     <div class="modal-subtitle">Choose which inventory to manage</div>
+    <input type="text" class="super-search" id="staff-super-search" placeholder="Search superintendents..."
+      autocomplete="off" autocorrect="off" spellcheck="false" oninput="renderStaffSuperList()" style="display:none" />
     <div class="super-select-list" id="staff-super-list"></div>
   </div>
 </div>
@@ -872,7 +879,21 @@
 
 <script>
   const SCRIPT_URL       = "https://script.google.com/macros/s/AKfycby44y8pbzlNJSUMkg6j6AOD3a8VWhlJcjA7O9uPVPW2WC9ygYsGUi9RekLYO7STXsU/exec";
-  const BUNDLE_CACHE_KEY = "tooling_bundle_data";
+  const BUNDLE_CACHE_KEY = "tooling_bundle_data_v2";
+  try { localStorage.removeItem("tooling_bundle_data"); } catch {}
+
+  // ── Escaping helpers ────────────────────────────────────────────────────
+  // Tool descriptions contain quotes (3/8" DR, LIFELINE 50'), so anything put
+  // into HTML must be escaped, and anything put inside an onclick='...' string
+  // must have its apostrophes encoded too.
+  function esc(v) {
+    return String(v == null ? "" : v)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+  function encArg(v) {
+    return encodeURIComponent(String(v)).replace(/'/g, "%27").replace(/[()]/g, c => "%" + c.charCodeAt(0).toString(16).toUpperCase());
+  }
   const CONFIG_TTL       = 60 * 60 * 1000;  // 1 hour
   const TOOLS_TTL        = 2  * 60 * 1000;  // 2 minutes
 
@@ -912,6 +933,7 @@
   let currentSuper       = null; 
   let currentTools       = [];   
   let staffSupers        = [];   
+  let isOperator         = false;
   let staffFilter        = "all";
   let pinBuffer          = "";
   let toastTimer         = null;
@@ -982,6 +1004,7 @@
   function staffExit() {
     clearStaffSelection();
     staffSupers = [];
+    isOperator = false;
     currentSuper = null;
     showSuperSelect();
   }
@@ -994,7 +1017,7 @@
       renderSuperGrid();
       // Silent background revalidation
       apiFetch({ action: "getInitialData" }).then(res => {
-        if (res.config && res.toolsBySuper) {
+        if (res.toolsBySuper && (res.supers || res.config)) {
           lsSet(BUNDLE_CACHE_KEY, res);
           applyBundleData(res);
           renderSuperGrid();
@@ -1004,7 +1027,7 @@
     }
 
     const res = await apiFetch({ action: "getInitialData" });
-    if (res.error || !res.config) {
+    if (res.error || !res.toolsBySuper) {
       document.getElementById("super-grid").innerHTML = `<div class="empty" style="grid-column:span 2">Failed to load. Check connection.</div>`;
       return;
     }
@@ -1016,7 +1039,7 @@
 
   function applyBundleData(bundle) {
     configData = bundle.config || [];
-    allSupers  = [...new Set(configData.map(r => r.superintendent))];
+    allSupers  = bundle.supers ? bundle.supers.slice() : [...new Set(configData.map(r => r.superintendent))];
 
     const rawTools = bundle.toolsBySuper || {};
     for (const [superName, tools] of Object.entries(rawTools)) {
@@ -1042,14 +1065,18 @@
   }
 
   function initials(name) {
-    return name.split(" ").map(w => w[0]).join("").substring(0, 2).toUpperCase();
+    return String(name).split(" ").filter(Boolean).map(w => w[0]).join("").substring(0, 2).toUpperCase();
   }
 
   function renderSuperGrid() {
+    if (!allSupers.length) {
+      document.getElementById("super-grid").innerHTML = `<div class="empty" style="grid-column:span 2">No superintendents with tools yet.</div>`;
+      return;
+    }
     document.getElementById("super-grid").innerHTML = allSupers.map(name => `
-      <div class="super-card" onclick="selectSuper('${encodeURIComponent(name)}')">
-        <div class="super-initial">${initials(name)}</div>
-        <div class="super-name">${name}</div>
+      <div class="super-card" onclick="selectSuper('${encArg(name)}')">
+        <div class="super-initial">${esc(initials(name))}</div>
+        <div class="super-name">${esc(name)}</div>
       </div>`).join("");
   }
 
@@ -1096,10 +1123,10 @@
       if (u.checkedOutBy) {
         var t = parseCheckoutTime(u.checkedOutAt);
         var hrs = (overdue && t) ? " (" + Math.floor((Date.now() - t.getTime()) / 3600000) + "h)" : "";
-        nameInfo = "<span class=\"unit-name\">" + u.checkedOutBy + hrs + "</span>";
+        nameInfo = "<span class=\"unit-name\">" + esc(u.checkedOutBy) + hrs + "</span>";
       }
       return "<div class=\"unit-row\">" +
-               "<span class=\"unit-id\">ID: " + u.toolId + "</span>" +
+               "<span class=\"unit-id\">ID: " + esc(u.toolId) + "</span>" +
                nameInfo +
                "<span class=\"unit-badge " + badgeClass + "\">" + badgeText + "</span>" +
              "</div>";
@@ -1126,7 +1153,7 @@
       var badgeClass  = avl === 0 ? "avail-red" : avl <= 1 ? "avail-yellow" : "avail-green";
       var badgeText   = avl === 0 ? "None available" : avl + " available";
       var isSelected  = selectedTools.has(name);
-      var enc         = encodeURIComponent(name);
+      var enc         = encArg(name);
       var cardClass   = "tool-card" + (unavailable ? " unavailable" : "") + (isSelected ? " selected" : "");
       var clickAttr   = unavailable ? "" : " onclick=\"toggleToolSelect(\'" + enc + "\')\"";
       var checkbox    = unavailable ? "" : "<div class=\"tool-check\" id=\"chk-" + enc + "\"><span class=\"tool-check-tick\">&#x2713;</span></div>";
@@ -1136,7 +1163,7 @@
                "<div class=\"" + cardClass + "\" id=\"tc-" + enc + "\"" + clickAttr + ">" +
                  checkbox +
                  "<div class=\"tool-card-left\">" +
-                   "<div class=\"tool-card-name\">" + name + "</div>" +
+                   "<div class=\"tool-card-name\">" + esc(name) + "</div>" +
                    "<div class=\"tool-card-sub\">" + tot + " unit" + (tot !== 1 ? "s" : "") + " total</div>" +
                  "</div>" +
                  "<span class=\"avail-badge " + badgeClass + "\">" + badgeText + "</span>" +
@@ -1189,7 +1216,7 @@
   function openMultiRequestModal() {
     const tools = Array.from(selectedTools);
     if (!tools.length) return;
-    if (tools.length === 1) { openRequestModal(encodeURIComponent(tools[0])); return; }
+    if (tools.length === 1) { openRequestModal(encArg(tools[0])); return; }
     currentRequestTool  = null;
     currentRequestTools = tools;
     document.getElementById("request-title").textContent    = `${tools.length} Tools Selected`;
@@ -1346,18 +1373,28 @@
     }
   }
 
+  let pinChecking = false;
   async function verifyPin() {
+    if (pinChecking) return;
+    pinChecking = true;
     const enteredPin = pinBuffer;
-    const matched = configData.filter(r => String(r.pin) === enteredPin);
-    if (matched.length === 0) {
-      document.getElementById("pin-error").style.display = "block";
+    const errEl = document.getElementById("pin-error");
+    const res = await apiFetch({ action: "verifyPin", pin: enteredPin });
+    pinChecking = false;
+    if (!res.success || !res.supers || !res.supers.length) {
+      errEl.textContent = (res.error && res.error.indexOf("Network") === 0) ? res.error : "Incorrect PIN. Try again.";
+      errEl.style.display = "block";
       pinBuffer = "";
       updatePinDots();
       return;
     }
 
     closePinModal();
-    staffSupers = matched.map(r => r.superintendent);
+    staffSupers = res.supers;
+    isOperator  = !!res.operator;
+    const badge = document.getElementById("staff-badge");
+    badge.textContent = isOperator ? "OPERATOR" : "STAFF";
+    badge.classList.toggle("operator", isOperator);
 
     if (staffSupers.length === 1) {
       await enterStaffView(staffSupers[0]);
@@ -1368,12 +1405,21 @@
 
   // ── Staff Super Select Modal ──────────────────────────────────────────────
   function openStaffSuperModal() {
-    document.getElementById("staff-super-list").innerHTML = staffSupers.map(name => `
-      <div class="super-select-item" onclick="staffSuperSelected('${encodeURIComponent(name)}')">
-        <div class="super-select-initial">${initials(name)}</div>
-        <div class="super-select-name">${name}</div>
-      </div>`).join("");
+    const search = document.getElementById("staff-super-search");
+    search.value = "";
+    search.style.display = staffSupers.length > 6 ? "" : "none";
+    renderStaffSuperList();
     document.getElementById("staff-super-modal").classList.add("active");
+  }
+
+  function renderStaffSuperList() {
+    const q = (document.getElementById("staff-super-search").value || "").trim().toLowerCase();
+    const list = q ? staffSupers.filter(n => n.toLowerCase().indexOf(q) > -1) : staffSupers;
+    document.getElementById("staff-super-list").innerHTML = list.length ? list.map(name => `
+      <div class="super-select-item" onclick="staffSuperSelected('${encArg(name)}')">
+        <div class="super-select-initial">${esc(initials(name))}</div>
+        <div class="super-select-name">${esc(name)}</div>
+      </div>`).join("") : `<div class="empty" style="padding:20px">No match</div>`;
   }
 
   function closeStaffSuperModal() {
@@ -1492,7 +1538,7 @@
         : "pill-checkedout";
 
       const personName = t.name || t.checkedOutBy || "";
-      const encKey     = encodeURIComponent(key);
+      const encKey     = encArg(key);
 
       return `
         <div class="staff-tool-card${disabledClass}${selectedClass}"
@@ -1500,10 +1546,10 @@
              onclick="${selectable ? `toggleStaffToolSelect('${encKey}')` : ''}">
           <div class="tool-check" id="schk-${encKey}"><span class="tool-check-tick">✓</span></div>
           <div class="staff-tool-left">
-            <div class="staff-tool-name">${t.toolName}</div>
-            <div class="staff-tool-id">ID: ${t.toolId}${personName ? " · " + personName : ""}</div>
+            <div class="staff-tool-name">${esc(t.toolName)}</div>
+            <div class="staff-tool-id">ID: ${esc(t.toolId)}${personName ? " · " + esc(personName) : ""}</div>
           </div>
-          <span class="status-pill ${pillClass}">${t.status}</span>
+          <span class="status-pill ${pillClass}">${esc(t.status)}</span>
         </div>`;
     }).join("");
 
@@ -1594,16 +1640,16 @@
         const optionsHtml = validUnits.map(u => {
           const isSel = u.toolId === item.toolId ? "selected" : "";
           const tag   = u.toolId === item.toolId ? ` (${item.status})` : " (Available)";
-          return `<option value="${u.toolId}" ${isSel}>ID: ${u.toolId}${tag}</option>`;
+          return `<option value="${esc(u.toolId)}" ${isSel}>ID: ${esc(u.toolId)}${esc(tag)}</option>`;
         }).join("");
 
         return `
           <div style="background:#f8f9fa; padding:10px 12px; border-radius:8px; display:flex; justify-content:space-between; align-items:center; gap:8px;">
             <div style="min-width:0; flex:1;">
-              <div style="font-weight:600; font-size:14px; color:#1a1a2e;">${item.toolName}</div>
-              <div style="font-size:11px; color:#888;">Orig Requested ID: ${item.toolId}</div>
+              <div style="font-weight:600; font-size:14px; color:#1a1a2e;">${esc(item.toolName)}</div>
+              <div style="font-size:11px; color:#888;">Orig Requested ID: ${esc(item.toolId)}</div>
             </div>
-            <select class="staff-tool-id-select" data-orig-id="${item.toolId}" data-tool-name="${item.toolName}" style="padding:6px 8px; border-radius:6px; border:1.5px solid #e0e0e0; font-size:13px; font-weight:600; background:#fff; color:#1a1a2e;">
+            <select class="staff-tool-id-select" data-orig-id="${esc(item.toolId)}" data-tool-name="${esc(item.toolName)}" style="padding:6px 8px; border-radius:6px; border:1.5px solid #e0e0e0; font-size:13px; font-weight:600; background:#fff; color:#1a1a2e;">
               ${optionsHtml}
             </select>
           </div>`;
@@ -1618,7 +1664,7 @@
 
       itemsList.innerHTML = selectedItems.map(item => `
         <div style="background:#f8f9fa; padding:10px 12px; border-radius:8px; font-size:14px; font-weight:600;">
-          ${item.toolName} <span style="font-size:12px; font-weight:normal; color:#888;">(ID: ${item.toolId})</span>
+          ${esc(item.toolName)} <span style="font-size:12px; font-weight:normal; color:#888;">(ID: ${esc(item.toolId)})</span>
         </div>`).join("");
 
     } else if (actionType === "checkIn") {
@@ -1631,7 +1677,7 @@
 
       itemsList.innerHTML = selectedItems.map(item => `
         <div style="background:#f8f9fa; padding:10px 12px; border-radius:8px; font-size:14px; font-weight:600;">
-          ${item.toolName} <span style="font-size:12px; font-weight:normal; color:#888;">(ID: ${item.toolId})</span>
+          ${esc(item.toolName)} <span style="font-size:12px; font-weight:normal; color:#888;">(ID: ${esc(item.toolId)})</span>
         </div>`).join("");
     }
 
@@ -1873,13 +1919,14 @@
       if      (action === "CHECKED OUT")       badgeClass = "action-checkout";
       else if (action === "CHECKED IN")        badgeClass = "action-checkin";
       else if (action === "REQUEST CANCELLED") badgeClass = "action-cancelled";
+      else if (action === "REMOVED")           badgeClass = "action-removed";
       return '<div class="history-card">' +
         '<div class="history-card-top">' +
-          '<span class="history-action ' + badgeClass + '">' + h.action + '</span>' +
-          '<span class="history-id">ID: ' + (h.toolId || "-") + '</span>' +
+          '<span class="history-action ' + badgeClass + '">' + esc(h.action) + '</span>' +
+          '<span class="history-id">ID: ' + esc(h.toolId || "-") + '</span>' +
         '</div>' +
-        '<div class="history-tool-name">' + (h.toolName || "") + '</div>' +
-        '<div class="history-meta">' + (h.name ? '<strong>' + h.name + '</strong> &middot; ' : '') + (h.timestamp || "") + '</div>' +
+        '<div class="history-tool-name">' + esc(h.toolName || "") + '</div>' +
+        '<div class="history-meta">' + (h.name ? '<strong>' + esc(h.name) + '</strong> &middot; ' : '') + esc(h.timestamp || "") + '</div>' +
       '</div>';
     }).join("");
   }
