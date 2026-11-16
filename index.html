@@ -4,6 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
   <title>Tooling Requests</title>
+  <link rel="preconnect" href="https://script.google.com" crossorigin>
+  <link rel="preconnect" href="https://script.googleusercontent.com" crossorigin>
+  <link rel="dns-prefetch" href="https://script.googleusercontent.com">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -660,6 +663,30 @@
       background: #f8f9fa; border-radius: 8px; padding: 12px;
       margin-bottom: 14px; cursor: pointer; font-size: 13px; color: #444; line-height: 1.4;
     }
+    /* ── Search bars ── */
+    .search-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+    .list-search {
+      flex: 1; min-width: 0; padding: 10px 12px; border: none; border-radius: 8px;
+      font-size: 16px; /* 16px stops iOS zooming in on focus */
+      background: #2e2e4a; color: #fff; outline: none; -webkit-appearance: none;
+    }
+    .list-search::placeholder { color: #888aaa; }
+    .search-count { font-size: 11px; color: #888aaa; white-space: nowrap; }
+    .staff-header { flex-wrap: wrap; }
+    .staff-header .search-row { flex: 1 0 100%; margin-top: 2px; }
+
+    /* ── Loading skeleton (shown while the first data arrives) ── */
+    .skeleton { pointer-events: none; }
+    .skeleton .super-initial, .skeleton .super-name {
+      background: linear-gradient(90deg, #e8eaef 25%, #f4f5f8 50%, #e8eaef 75%);
+      background-size: 200% 100%; animation: shimmer 1.2s infinite linear; color: transparent;
+    }
+    .skeleton .super-name { height: 14px; border-radius: 4px; width: 70%; margin: 0 auto; }
+    @keyframes shimmer { to { background-position: -200% 0; } }
+
+    /* Let the browser skip layout/paint for cards that are off screen */
+    .tool-card-container, .staff-tool-card { content-visibility: auto; contain-intrinsic-size: auto 72px; }
+
     .condition-check-wrap input[type="checkbox"] {
       width: 18px; height: 18px; flex-shrink: 0;
       accent-color: #4f46e5; margin-top: 1px; cursor: pointer;
@@ -700,8 +727,14 @@
         <p>Tap a tool to request it</p>
       </div>
       <div class="header-right">
-        <button class="back-btn" onclick="showSuperSelect()">&#8592; Back</button>
+        <button class="back-btn" onclick="goBack()">&#8592; Back</button>
       </div>
+    </div>
+    <div class="search-row">
+      <input type="search" id="tool-search" class="list-search" placeholder="Search tools or ID..."
+        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search"
+        oninput="onSearchInput()" />
+      <span class="search-count" id="tool-search-count"></span>
     </div>
   </header>
   <div class="page-content">
@@ -719,6 +752,12 @@
     <button class="staff-btn refresh-btn-icon" onclick="manualRefresh()" style="font-size:15px;padding:6px 10px">↻</button>
     <span class="sync-indicator" title="Syncing..."></span>
     <span class="staff-badge" id="staff-badge">STAFF</span>
+    <div class="search-row">
+      <input type="search" id="staff-search" class="list-search" placeholder="Search tools, ID or name..."
+        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search"
+        oninput="onSearchInput()" />
+      <span class="search-count" id="staff-search-count"></span>
+    </div>
   </div>
   <div class="page-content">
     <div class="filter-tabs" id="staff-filter-tabs">
@@ -879,8 +918,9 @@
 
 <script>
   const SCRIPT_URL       = "https://script.google.com/macros/s/AKfycby44y8pbzlNJSUMkg6j6AOD3a8VWhlJcjA7O9uPVPW2WC9ygYsGUi9RekLYO7STXsU/exec";
-  const BUNDLE_CACHE_KEY = "tooling_bundle_data_v2";
-  try { localStorage.removeItem("tooling_bundle_data"); } catch {}
+  const BUNDLE_CACHE_KEY = "tooling_bundle_v3";
+  const BUNDLE_MAX_AGE   = 7 * 24 * 60 * 60 * 1000;  // show saved data instantly for up to a week, then refresh it
+  try { ["tooling_bundle_data", "tooling_bundle_data_v2"].forEach(k => localStorage.removeItem(k)); } catch {}
 
   // ── Escaping helpers ────────────────────────────────────────────────────
   // Tool descriptions contain quotes (3/8" DR, LIFELINE 50'), so anything put
@@ -976,11 +1016,22 @@
     for (const [k, v] of Object.entries(params)) {
       p[k] = (Array.isArray(v) || (typeof v === 'object' && v !== null)) ? JSON.stringify(v) : v;
     }
+    // Reads are safe to retry once; writes are never retried (could double-submit).
+    const isRead = /^(get|verifyPin)/.test(String(params.action || ""));
+    const attempts = isRead ? 2 : 1;
     try {
-      const res = await fetch(SCRIPT_URL + "?" + new URLSearchParams(p).toString());
-      try { return await res.json(); } catch { return { error: "Server returned an unexpected response." }; }
-    } catch (e) {
-      return { error: "Network error. Check your connection and try again." };
+      for (let i = 0; i < attempts; i++) {
+        const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+        const timer = ctrl ? setTimeout(() => ctrl.abort(), 30000) : null;
+        try {
+          const res = await fetch(SCRIPT_URL + "?" + new URLSearchParams(p).toString(), ctrl ? { signal: ctrl.signal } : {});
+          try { return await res.json(); } catch { return { error: "Server returned an unexpected response." }; }
+        } catch (e) {
+          if (i === attempts - 1) return { error: "Network error. Check your connection and try again." };
+        } finally {
+          if (timer) clearTimeout(timer);
+        }
+      }
     } finally {
       activeSyncRequests = Math.max(0, activeSyncRequests - 1);
       updateSyncIndicator();
@@ -1006,61 +1057,187 @@
     staffSupers = [];
     isOperator = false;
     currentSuper = null;
+    navReplace({ view: "home" });
     showSuperSelect();
   }
 
-  // ── Init ──────────────────────────────────────────────────────────────────
-  async function init() {
-    const cached = lsGet(BUNDLE_CACHE_KEY, CONFIG_TTL);
-    if (cached) {
-      applyBundleData(cached);
-      renderSuperGrid();
-      // Silent background revalidation
-      apiFetch({ action: "getInitialData" }).then(res => {
-        if (res.toolsBySuper && (res.supers || res.config)) {
-          lsSet(BUNDLE_CACHE_KEY, res);
-          applyBundleData(res);
-          renderSuperGrid();
-        }
-      });
+  // ── Browser back button (History API) ─────────────────────────────────────
+  // Every screen and every open pop-up gets a history entry, so the phone's /
+  // browser's Back button closes the pop-up or goes back a screen, exactly like
+  // the in-app Back button. Staff screens can't be reopened with Forward after
+  // exiting (the PIN is required again).
+  function stateUrl(st) {
+    const base = location.pathname + location.search;
+    if (st && st.view === "tools" && st.super) return base + "#super=" + encodeURIComponent(st.super);
+    if (st && st.view === "staff") return base + "#staff";
+    return base;
+  }
+  function navPush(st)    { st = Object.assign({}, st, { app: true }); history.pushState(st, "", stateUrl(st)); }
+  function navReplace(st) { st = Object.assign({}, st, { app: true }); history.replaceState(st, "", stateUrl(st)); }
+  // Moving to a new screen while a pop-up's history entry is on top: replace it.
+  function navTo(st) {
+    if (history.state && history.state.modal) navReplace(st); else navPush(st);
+  }
+  function pushModal(id) {
+    const st = Object.assign({}, history.state || { view: "home" }, { modal: id, app: true });
+    if (history.state && history.state.modal) history.replaceState(st, "", location.href);
+    else history.pushState(st, "", location.href);
+  }
+  // Called when the user closes a pop-up with X / Cancel / tapping outside.
+  function leaveModal(id) {
+    if (history.state && history.state.modal === id) history.back();
+  }
+  function goBack() {
+    if (history.state && history.state.app && history.length > 1 && history.state.view !== "home" && !history.state.deep) history.back();
+    else { navReplace({ view: "home" }); showSuperSelect(); }
+  }
+  const MODAL_CLOSERS = {
+    "pin-modal":          () => closePinModal(true),
+    "staff-super-modal":  () => closeStaffSuperModal(true),
+    "request-modal":      () => closeRequestModal(true),
+    "staff-action-modal": () => closeStaffActionModal(true)
+  };
+  function currentViewId() {
+    const v = document.querySelector(".view.active");
+    return v ? v.id : "";
+  }
+  function routeTo(st) {
+    st = st || { view: "home" };
+    if (st.view === "tools" && st.super && allSupers.includes(st.super)) {
+      if (currentViewId() !== "view-tool-list" || currentSuper !== st.super) selectSuper(encArg(st.super), true);
       return;
+    }
+    if (st.view === "staff" && st.super && staffSupers.includes(st.super)) {
+      if (currentViewId() !== "view-staff-tools" || currentSuper !== st.super) enterStaffView(st.super, true);
+      return;
+    }
+    // Leaving the staff screen (or arriving at it without a PIN): PIN needed again
+    if (st.view === "staff" || currentViewId() === "view-staff-tools") { staffSupers = []; isOperator = false; }
+    if (currentViewId() !== "view-super-select") showSuperSelect();
+    if (st.view !== "home") navReplace({ view: "home" });
+  }
+  window.addEventListener("popstate", e => {
+    const open = [...document.querySelectorAll(".modal-overlay.active")];
+    if (open.length) {
+      open.forEach(m => MODAL_CLOSERS[m.id] && MODAL_CLOSERS[m.id]());
+      if (e.state && e.state.modal) return;
+    }
+    let st = e.state;
+    if (st && st.modal) {           // landed on a pop-up entry with no pop-up open (Forward): drop it
+      st = Object.assign({}, st); delete st.modal;
+      history.replaceState(st, "", location.href);
+    }
+    routeTo(st);
+  });
+  document.addEventListener("keydown", e => {
+    if (e.key !== "Escape") return;
+    const open = document.querySelector(".modal-overlay.active");
+    if (open && MODAL_CLOSERS[open.id]) { MODAL_CLOSERS[open.id](); leaveModal(open.id); }
+  });
+
+  // ── Init ──────────────────────────────────────────────────────────────────
+  // Loading order (stale-while-revalidate):
+  //   1. Saved copy from this phone (localStorage): drawn instantly, any age up to a week.
+  //   2. No saved copy: grey placeholder cards, then the small "getSupers" reply
+  //      fills in the names (tools are not needed to show the buttons).
+  //   3. The full tool list ("getInitialData") arrives in the background and
+  //      quietly updates whatever screen is open.
+  let freshAt = {};          // superintendent -> time of the newest data we have for them
+  let deepLinkHandled = false;
+
+  async function init(opts) {
+    const force = opts && opts.force;
+    const cached = force ? null : lsGet(BUNDLE_CACHE_KEY, BUNDLE_MAX_AGE);
+    if (cached) {
+      applyBundleData(cached, 0);
+      renderSuperGrid();
+      handleDeepLink();
+    } else if (!allSupers.length) {
+      renderSuperSkeleton();
+    }
+
+    const startedAt = Date.now();
+    let haveFull = false;
+    if (!cached && !allSupers.length) {
+      apiFetch({ action: "getSupers" }).then(r => {
+        if (haveFull || !r.supers) return;
+        allSupers = r.supers.slice();
+        renderSuperGrid();
+        handleDeepLink();
+      });
     }
 
     const res = await apiFetch({ action: "getInitialData" });
-    if (res.error || !res.toolsBySuper) {
-      document.getElementById("super-grid").innerHTML = `<div class="empty" style="grid-column:span 2">Failed to load. Check connection.</div>`;
+    haveFull = true;
+    if (res.error || !res.tools) {
+      if (!allSupers.length) {
+        document.getElementById("super-grid").innerHTML = `<div class="empty" style="grid-column:span 2">Failed to load. Check connection and tap ↻.</div>`;
+      }
       return;
     }
-
     lsSet(BUNDLE_CACHE_KEY, res);
-    applyBundleData(res);
-    renderSuperGrid();
+    applyBundleData(res, startedAt);
+    refreshOpenScreen();
+    handleDeepLink();
   }
 
-  function applyBundleData(bundle) {
-    configData = bundle.config || [];
-    allSupers  = bundle.supers ? bundle.supers.slice() : [...new Set(configData.map(r => r.superintendent))];
+  // Server sends tool names once (res.names) and each unit as
+  // [nameIndex, toolId, statusCode, person?, checkedOutAt?]
+  const STATUS_NAMES = ["Available", "Requested", "Checked Out"];
+  function expandTools(res, rows) {
+    return rows.map(r => {
+      const person = r[3] || "";
+      return {
+        toolName: res.names[r[0]], toolId: String(r[1]),
+        status: typeof r[2] === "number" ? STATUS_NAMES[r[2]] : r[2],
+        name: person, checkedOutBy: person, checkedOutAt: r[4] || ""
+      };
+    });
+  }
 
-    const rawTools = bundle.toolsBySuper || {};
-    for (const [superName, tools] of Object.entries(rawTools)) {
-      staffToolsInMemory[superName] = tools;
-      toolsInMemory[superName]      = tools;
-    }
+  function applyBundleData(bundle, startedAt) {
+    allSupers  = (bundle.supers || []).slice();
+    configData = allSupers.map(s => ({ superintendent: s }));
+    const tools = bundle.tools || {};
+    Object.keys(tools).forEach(superName => {
+      if ((freshAt[superName] || 0) > startedAt) return;   // we already have newer data for this one
+      const list = expandTools(bundle, tools[superName]);
+      staffToolsInMemory[superName] = list;
+      toolsInMemory[superName]      = list;
+      freshAt[superName] = startedAt;
+    });
+  }
+
+  // Re-draw whatever is on screen after new data arrives in the background.
+  function refreshOpenScreen() {
+    const view = currentViewId();
+    if (view === "view-super-select") { renderSuperGrid(); return; }
+    if (!currentSuper || !toolsInMemory[currentSuper]) return;
+    if (view === "view-tool-list") { currentTools = toolsInMemory[currentSuper]; renderToolList(); }
+    else if (view === "view-staff-tools" && !isStaffActionModalOpen()) { currentTools = staffToolsInMemory[currentSuper]; renderStaffTools(); }
+  }
+
+  // Reloading a page like ...#super=Erik%20Acosta reopens that list, and Back
+  // still returns to the superintendent screen.
+  function handleDeepLink() {
+    if (deepLinkHandled || !allSupers.length) return;
+    deepLinkHandled = true;
+    const m = location.hash.match(/^#super=(.+)$/);
+    const name = m ? decodeURIComponent(m[1]) : null;
+    navReplace({ view: "home" });
+    if (name && allSupers.includes(name) && currentViewId() === "view-super-select") selectSuper(encArg(name));
+  }
+
+  function renderSuperSkeleton() {
+    document.getElementById("super-grid").innerHTML = Array.from({ length: 8 }, () =>
+      `<div class="super-card skeleton"><div class="super-initial"></div><div class="super-name">&nbsp;</div></div>`).join("");
   }
 
   async function manualRefresh() {
     const btns = document.querySelectorAll(".refresh-btn-icon");
     btns.forEach(btn => { btn.textContent = "↻"; btn.classList.add("spinning"); });
-
-    lsClear(BUNDLE_CACHE_KEY);
-    toolsInMemory = {};
-    staffToolsInMemory = {};
-    await init();
-
-    if (currentSuper && document.getElementById("view-staff-tools").classList.contains("active")) {
-      await loadStaffTools();
-    }
-
+    await init({ force: true });   // keeps showing current data until the new data is in
+    if (currentSuper && currentViewId() === "view-staff-tools") await loadStaffTools();
     btns.forEach(btn => { btn.classList.remove("spinning"); btn.textContent = "↻"; });
   }
 
@@ -1068,7 +1245,12 @@
     return String(name).split(" ").filter(Boolean).map(w => w[0]).join("").substring(0, 2).toUpperCase();
   }
 
+  let lastGridKey = "";
   function renderSuperGrid() {
+    const key = allSupers.join("\u0001");
+    const grid = document.getElementById("super-grid");
+    if (key && key === lastGridKey && grid.querySelector(".super-card:not(.skeleton)")) return;
+    lastGridKey = key;
     if (!allSupers.length) {
       document.getElementById("super-grid").innerHTML = `<div class="empty" style="grid-column:span 2">No superintendents with tools yet.</div>`;
       return;
@@ -1081,9 +1263,12 @@
   }
 
   // ── Electrician View ──────────────────────────────────────────────────────
-  async function selectSuper(encodedName) {
+  async function selectSuper(encodedName, fromHistory) {
     currentSuper = decodeURIComponent(encodedName);
+    if (!fromHistory) navTo({ view: "tools", super: currentSuper });
     expandedUnits.clear();
+    clearSelection();
+    resetSearch("tool-search");
     document.getElementById("tool-list-title").textContent = currentSuper;
     showView("view-tool-list");
 
@@ -1096,13 +1281,14 @@
 
     const requestedSuper = currentSuper;
     const seq = beginToolsFetch(requestedSuper);
+    const startedAt = Date.now();
     apiFetch({ action: "getTools", superintendent: requestedSuper, staff: "1" }).then(res => {
       if (isStaleToolsFetch(requestedSuper, seq)) return; // a newer fetch for this super has since started
       if (!res.error && res.data) {
+        freshAt[requestedSuper] = startedAt;
         staffToolsInMemory[requestedSuper] = res.data;
         toolsInMemory[requestedSuper]      = res.data;
-        lsSet("tools_" + requestedSuper, res.data);
-        if (currentSuper === requestedSuper) {
+        if (currentSuper === requestedSuper && currentViewId() === "view-tool-list") {
           currentTools = res.data;
           renderToolList();
         }
@@ -1110,8 +1296,31 @@
     });
   }
 
+  // ── Search ───────────────────────────────────────────────────────────────
+  // Ignores case, spaces and punctuation, and every word must match somewhere:
+  // "torque 20-150" and "torq 20150" both find TORQUE WRENCH 3/8" DR 20-150 IN LBS.
+  function normSearch(s) { return String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, ""); }
+  function searchTokens(id) {
+    const el = document.getElementById(id);
+    return (el ? el.value : "").toLowerCase().split(/\s+/).map(normSearch).filter(Boolean);
+  }
+  function matchesTokens(tokens, hay) { return tokens.every(t => hay.indexOf(t) > -1); }
+  function resetSearch(id) { const el = document.getElementById(id); if (el) el.value = ""; }
+  let searchTimer = null;
+  function onSearchInput() {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => {
+      if (currentViewId() === "view-tool-list") renderToolList();
+      else if (currentViewId() === "view-staff-tools") { if (staffFilter === "history") renderHistory(); else renderStaffTools(); }
+    }, 90);
+  }
+  function setCount(id, shown, total, word) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = shown === total ? "" : shown + " of " + total + " " + word;
+  }
+
   function buildUnitRows(name) {
-    var units = currentTools.filter(function(t) { return t.toolName === name; });
+    var units = (unitsByName[name] || currentTools.filter(function(t) { return t.toolName === name; }));
     return units.map(function(u) {
       var overdue    = isOverdue(u.checkedOutAt);
       var badgeClass = "unit-avail";
@@ -1133,16 +1342,29 @@
     }).join("");
   }
 
+  var unitsByName = {};
   function renderToolList() {
     var groups = {};
+    unitsByName = {};
     currentTools.forEach(function(t) {
-      if (!groups[t.toolName]) groups[t.toolName] = { available: 0, total: 0 };
+      if (!groups[t.toolName]) { groups[t.toolName] = { available: 0, total: 0, hay: normSearch(t.toolName) }; unitsByName[t.toolName] = []; }
       groups[t.toolName].total++;
+      groups[t.toolName].hay += " " + normSearch(t.toolId);
+      unitsByName[t.toolName].push(t);
       if (t.status === "Available") groups[t.toolName].available++;
     });
-    var names = Object.keys(groups);
-    if (!names.length) {
+    var allNames = Object.keys(groups);
+    if (!allNames.length) {
+      setCount("tool-search-count", 0, 0, "");
       document.getElementById("tool-list").innerHTML = "<div class=\"empty\">No tools found for this superintendent.</div>";
+      return;
+    }
+    var tokens = searchTokens("tool-search");
+    var names = tokens.length ? allNames.filter(function(n) { return matchesTokens(tokens, groups[n].hay); }) : allNames;
+    setCount("tool-search-count", names.length, allNames.length, "tools");
+    if (!names.length) {
+      document.getElementById("tool-list").innerHTML = "<div class=\"empty\">No tools match your search.</div>";
+      updateSelectionBar();
       return;
     }
     document.getElementById("tool-list").innerHTML = names.map(function(name) {
@@ -1157,8 +1379,8 @@
       var cardClass   = "tool-card" + (unavailable ? " unavailable" : "") + (isSelected ? " selected" : "");
       var clickAttr   = unavailable ? "" : " onclick=\"toggleToolSelect(\'" + enc + "\')\"";
       var checkbox    = unavailable ? "" : "<div class=\"tool-check\" id=\"chk-" + enc + "\"><span class=\"tool-check-tick\">&#x2713;</span></div>";
-      var unitRows    = buildUnitRows(name);
       var isOpen      = expandedUnits.has(name);
+      var unitRows    = isOpen ? buildUnitRows(name) : "";
       return "<div class=\"tool-card-container\">" +
                "<div class=\"" + cardClass + "\" id=\"tc-" + enc + "\"" + clickAttr + ">" +
                  checkbox +
@@ -1228,6 +1450,7 @@
     btn.disabled    = false;
     document.getElementById("request-cancel").style.display = "";
     document.getElementById("request-modal").classList.add("active");
+    pushModal("request-modal");
   }
 
   function openRequestModal(encodedName) {
@@ -1241,11 +1464,15 @@
     btn.disabled    = false;
     document.getElementById("request-cancel").style.display = "";
     document.getElementById("request-modal").classList.add("active");
+    pushModal("request-modal");
   }
 
-  function closeRequestModal() {
-    document.getElementById("request-modal").classList.remove("active");
+  function closeRequestModal(fromHistory) {
+    const m = document.getElementById("request-modal");
+    const wasOpen = m.classList.contains("active");
+    m.classList.remove("active");
     currentRequestTool = null;
+    if (wasOpen && !fromHistory) leaveModal("request-modal");
   }
 
   function closeRequestOnOverlay(e) {
@@ -1291,7 +1518,7 @@
         staffToolsInMemory[targetSuper] = flippedStaff;
       }
 
-      lsClear(BUNDLE_CACHE_KEY);
+      freshAt[targetSuper] = Date.now();   // newer than any background refresh already in flight
       closeRequestModal();
       clearSelection();
       renderToolList();
@@ -1342,12 +1569,17 @@
     updatePinDots();
     document.getElementById("pin-error").style.display = "none";
     document.getElementById("pin-modal").classList.add("active");
+    pushModal("pin-modal");
   }
 
-  function closePinModal() {
-    document.getElementById("pin-modal").classList.remove("active");
+  // keepHistory = true when the pop-up is being swapped for another screen
+  function closePinModal(keepHistory) {
+    const m = document.getElementById("pin-modal");
+    const wasOpen = m.classList.contains("active");
+    m.classList.remove("active");
     pinBuffer = "";
     updatePinDots();
+    if (wasOpen && !keepHistory) leaveModal("pin-modal");
   }
 
   function closePinOnOverlay(e) {
@@ -1389,7 +1621,7 @@
       return;
     }
 
-    closePinModal();
+    closePinModal(true);
     staffSupers = res.supers;
     isOperator  = !!res.operator;
     const badge = document.getElementById("staff-badge");
@@ -1410,6 +1642,7 @@
     search.style.display = staffSupers.length > 6 ? "" : "none";
     renderStaffSuperList();
     document.getElementById("staff-super-modal").classList.add("active");
+    pushModal("staff-super-modal");
   }
 
   function renderStaffSuperList() {
@@ -1422,8 +1655,11 @@
       </div>`).join("") : `<div class="empty" style="padding:20px">No match</div>`;
   }
 
-  function closeStaffSuperModal() {
-    document.getElementById("staff-super-modal").classList.remove("active");
+  function closeStaffSuperModal(keepHistory) {
+    const m = document.getElementById("staff-super-modal");
+    const wasOpen = m.classList.contains("active");
+    m.classList.remove("active");
+    if (wasOpen && !keepHistory) leaveModal("staff-super-modal");
   }
 
   function closeStaffSuperOnOverlay(e) {
@@ -1431,13 +1667,15 @@
   }
 
   async function staffSuperSelected(encodedName) {
-    closeStaffSuperModal();
+    closeStaffSuperModal(true);
     await enterStaffView(decodeURIComponent(encodedName));
   }
 
   // ── Staff View & Multi-Select ─────────────────────────────────────────────
-  async function enterStaffView(superName) {
+  async function enterStaffView(superName, fromHistory) {
+    if (!fromHistory) navTo({ view: "staff", super: superName });
     currentSuper = superName;
+    resetSearch("staff-search");
     clearStaffSelection();
     document.getElementById("staff-title").textContent = superName;
     showView("view-staff-tools");
@@ -1456,9 +1694,11 @@
 
     const requestedSuper = currentSuper;
     const seq = beginToolsFetch(requestedSuper);
+    const startedAt = Date.now();
     const res = await apiFetch({ action: "getTools", superintendent: requestedSuper, staff: "1" });
     if (isStaleToolsFetch(requestedSuper, seq)) return; // a newer fetch for this super has since started
     if (!res.error && res.data) {
+      freshAt[requestedSuper] = startedAt;
       staffToolsInMemory[requestedSuper] = res.data;
       toolsInMemory[requestedSuper]      = res.data;
       if (currentSuper === requestedSuper) {
@@ -1516,12 +1756,18 @@
   }
 
   function renderStaffTools() {
-    const filtered = staffFilter === "all"
+    const byStatus = staffFilter === "all" || staffFilter === "history"
       ? currentTools
       : currentTools.filter(t => t.status === staffFilter);
+    const tokens = searchTokens("staff-search");
+    const filtered = tokens.length
+      ? byStatus.filter(t => matchesTokens(tokens, normSearch(t.toolName) + " " + normSearch(t.toolId) + " " + normSearch(t.name || t.checkedOutBy)))
+      : byStatus;
+    setCount("staff-search-count", filtered.length, byStatus.length, "units");
 
     if (!filtered.length) {
-      document.getElementById("staff-tool-list").innerHTML = `<div class="empty">No tools with this status.</div>`;
+      document.getElementById("staff-tool-list").innerHTML = `<div class="empty">${tokens.length ? "No tools match your search." : "No tools with this status."}</div>`;
+      updateStaffSelectionBar();
       return;
     }
 
@@ -1695,10 +1941,14 @@
     btn.disabled = (actionType !== "cancel");
 
     document.getElementById("staff-action-modal").classList.add("active");
+    pushModal("staff-action-modal");
   }
 
-  function closeStaffActionModal() {
-    document.getElementById("staff-action-modal").classList.remove("active");
+  function closeStaffActionModal(fromHistory) {
+    const m = document.getElementById("staff-action-modal");
+    const wasOpen = m.classList.contains("active");
+    m.classList.remove("active");
+    if (wasOpen && !fromHistory) leaveModal("staff-action-modal");
     currentStaffAction = null;
     var chk = document.getElementById("condition-check");
     if (chk) chk.checked = false;
@@ -1785,7 +2035,7 @@
         if (currentSuper === targetSuper) currentTools = staffToolsInMemory[targetSuper];
       }
 
-      lsClear(BUNDLE_CACHE_KEY);
+      freshAt[targetSuper] = Date.now();
       closeStaffActionModal();
       clearStaffSelection();
 
@@ -1873,6 +2123,7 @@
       list.style.display = "none";
       expandedUnits.delete(name);
     } else {
+      if (!list.innerHTML) list.innerHTML = buildUnitRows(name);
       list.style.display = "block";
       expandedUnits.add(name);
     }
@@ -1891,7 +2142,7 @@
   }
 
   function renderHistory() {
-    var query    = (document.getElementById("history-search") || {}).value || "";
+    var query    = ((document.getElementById("history-search") || {}).value || "") + " " + ((document.getElementById("staff-search") || {}).value || "");
     var zone     = historyZoneFilter;
     var filtered = _staffHistory.filter(function(h) {
       return h.superintendent === currentSuper;
