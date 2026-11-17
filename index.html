@@ -254,6 +254,26 @@
     .pill-requested  { background: #fef3c7; color: #92400e; }
     .pill-checkedout { background: #fee2e2; color: #991b1b; }
 
+    /* ── Staff grouped tools (same tool, several IDs) ── */
+    .staff-group { background: #fff; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.07); overflow: hidden; }
+    .staff-group-head {
+      display: flex; align-items: center; gap: 10px; padding: 13px 14px;
+      cursor: pointer; -webkit-tap-highlight-color: transparent;
+    }
+    .staff-group-head.has-selected { background: #eef2ff; }
+    .staff-group-chev { width: 26px; text-align: center; color: #4f46e5; font-size: 14px; flex-shrink: 0; transition: transform 0.15s; }
+    .staff-group.open .staff-group-chev { transform: rotate(90deg); }
+    .staff-group-pills { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex-shrink: 0; }
+    .staff-group-units { display: none; border-top: 1px solid #f0f0f0; }
+    .staff-group.open .staff-group-units { display: block; }
+    .staff-group-units .staff-tool-card {
+      box-shadow: none; border-radius: 0; padding: 10px 14px 10px 22px;
+      border-bottom: 1px solid #f5f5f5;
+    }
+    .staff-group-units .staff-tool-card:last-child { border-bottom: none; }
+    .staff-group-units .staff-tool-id { font-size: 13px; color: #1a1a2e; font-weight: 600; margin-top: 0; }
+    .staff-group-units .staff-tool-person { font-size: 11px; color: #888; }
+
     /* ── Filter tabs (staff) ── */
     .filter-tabs {
       display: flex;
@@ -982,6 +1002,7 @@
   let selectedTools      = new Set(); // Electrician selected tool names
   let expandedUnits      = new Set(); // Tool names whose "Show units" list is currently open
   let selectedStaffKeys  = new Set(); // Staff selected unique keys ("toolName|||toolId")
+  let staffOpenGroups    = new Set(); // tool names whose ID list is expanded
   let currentStaffAction = null;     // 'checkOut', 'checkIn', 'cancel'
   let staffToolsInMemory = {}; 
 
@@ -1676,6 +1697,7 @@
     if (!fromHistory) navTo({ view: "staff", super: superName });
     currentSuper = superName;
     resetSearch("staff-search");
+    staffOpenGroups.clear();
     clearStaffSelection();
     document.getElementById("staff-title").textContent = superName;
     showView("view-staff-tools");
@@ -1734,24 +1756,25 @@
     return allTools.filter(t => selectedStaffKeys.has(t.toolName + "|||" + t.toolId));
   }
 
+  // Which tools can be selected together:
+  //   - Available and Requested tools can be mixed (both can be checked out), but
+  //     any Requested ones must all be for the same person (one check-out = one name).
+  //   - Checked Out tools only with other Checked Out tools of the same person (check-in).
+  const personOf = t => (t.name || t.checkedOutBy || "").trim().toLowerCase();
+  const actionGroup = t => t.status === "Checked Out" ? "in" : "out";
+
   function isStaffItemSelectable(tool) {
     if (selectedStaffKeys.size === 0) return true;
-
     const selectedItems = getSelectedStaffItems();
     if (!selectedItems.length) return true;
+    if (selectedItems.some(s => s.toolName === tool.toolName && s.toolId === tool.toolId)) return true;  // can always unselect
 
-    const firstTool = selectedItems[0];
-
-    // Must match status (e.g. all Available, all Requested, or all Checked Out)
-    if (tool.status !== firstTool.status) return false;
-
-    // If status is not Available (i.e., Requested or Checked Out), must match same person
-    if (tool.status !== "Available") {
-      const name1 = (firstTool.name || firstTool.checkedOutBy || "").trim().toLowerCase();
-      const name2 = (tool.name || tool.checkedOutBy || "").trim().toLowerCase();
-      if (name1 !== name2) return false;
+    if (actionGroup(tool) !== actionGroup(selectedItems[0])) return false;
+    if (tool.status === "Checked Out") return personOf(tool) === personOf(selectedItems[0]);
+    if (tool.status === "Requested") {
+      const req = selectedItems.find(s => s.status === "Requested");
+      if (req && personOf(req) !== personOf(tool)) return false;
     }
-
     return true;
   }
 
@@ -1771,35 +1794,71 @@
       return;
     }
 
-    document.getElementById("staff-tool-list").innerHTML = filtered.map(t => {
-      const key           = t.toolName + "|||" + t.toolId;
-      const isSelected    = selectedStaffKeys.has(key);
-      const selectable    = isStaffItemSelectable(t);
-      const disabledClass = !selectable ? " staff-card-disabled" : "";
-      const selectedClass = isSelected ? " selected" : "";
-      const pillClass     = t.status === "Available"
-        ? "pill-available"
-        : t.status === "Requested"
-        ? "pill-requested"
-        : "pill-checkedout";
+    // Group units of the same tool under one header; single-unit tools stay a plain card.
+    const groups = new Map();
+    filtered.forEach(t => { if (!groups.has(t.toolName)) groups.set(t.toolName, []); groups.get(t.toolName).push(t); });
+    const idSearch = tokens.length > 0;  // a search hit on an ID or person should be visible without tapping
 
-      const personName = t.name || t.checkedOutBy || "";
-      const encKey     = encArg(key);
+    const html = [];
+    groups.forEach((units, toolName) => {
+      if (units.length === 1) { html.push(staffUnitCard(units[0], false)); return; }
+      const enc      = encArg(toolName);
+      const anySel   = units.some(u => selectedStaffKeys.has(u.toolName + "|||" + u.toolId));
+      const allOff   = units.every(u => !isStaffItemSelectable(u));
+      const nameHit  = matchesTokens(tokens, normSearch(toolName));
+      const open     = staffOpenGroups.has(toolName) || (idSearch && !nameHit);
+      const counts   = { "Available": 0, "Requested": 0, "Checked Out": 0 };
+      units.forEach(u => { if (counts[u.status] !== undefined) counts[u.status]++; });
+      const pills = [["Available", "pill-available"], ["Requested", "pill-requested"], ["Checked Out", "pill-checkedout"]]
+        .filter(([st]) => counts[st])
+        .map(([st, cls]) => `<span class="status-pill ${cls}">${counts[st]} ${esc(st)}</span>`).join("");
+      const selCount = units.filter(u => selectedStaffKeys.has(u.toolName + "|||" + u.toolId)).length;
+      html.push(`
+        <div class="staff-group${open ? " open" : ""}${allOff ? " staff-card-disabled" : ""}" id="sgrp-${enc}">
+          <div class="staff-group-head${anySel ? " has-selected" : ""}" onclick="toggleStaffGroup('${enc}')">
+            <div class="staff-group-chev">&#9654;</div>
+            <div class="staff-tool-left">
+              <div class="staff-tool-name">${esc(toolName)}</div>
+              <div class="staff-tool-id">${units.length} IDs${selCount ? " · " + selCount + " selected" : ""}</div>
+            </div>
+            <div class="staff-group-pills">${pills}</div>
+          </div>
+          <div class="staff-group-units">${units.map(u => staffUnitCard(u, true)).join("")}</div>
+        </div>`);
+    });
+    document.getElementById("staff-tool-list").innerHTML = html.join("");
 
-      return `
+    updateStaffSelectionBar();
+  }
+
+  function staffUnitCard(t, inGroup) {
+    const key           = t.toolName + "|||" + t.toolId;
+    const selectable    = isStaffItemSelectable(t);
+    const disabledClass = !selectable ? " staff-card-disabled" : "";
+    const selectedClass = selectedStaffKeys.has(key) ? " selected" : "";
+    const pillClass     = t.status === "Available" ? "pill-available" : t.status === "Requested" ? "pill-requested" : "pill-checkedout";
+    const personName    = t.name || t.checkedOutBy || "";
+    const encKey        = encArg(key);
+    const left = inGroup
+      ? `<div class="staff-tool-id">ID: ${esc(t.toolId)}</div>${personName ? `<div class="staff-tool-person">${esc(personName)}</div>` : ""}`
+      : `<div class="staff-tool-name">${esc(t.toolName)}</div>
+         <div class="staff-tool-id">ID: ${esc(t.toolId)}${personName ? " · " + esc(personName) : ""}</div>`;
+    return `
         <div class="staff-tool-card${disabledClass}${selectedClass}"
              id="stc-${encKey}"
              onclick="${selectable ? `toggleStaffToolSelect('${encKey}')` : ''}">
           <div class="tool-check" id="schk-${encKey}"><span class="tool-check-tick">✓</span></div>
-          <div class="staff-tool-left">
-            <div class="staff-tool-name">${esc(t.toolName)}</div>
-            <div class="staff-tool-id">ID: ${esc(t.toolId)}${personName ? " · " + esc(personName) : ""}</div>
-          </div>
+          <div class="staff-tool-left">${left}</div>
           <span class="status-pill ${pillClass}">${esc(t.status)}</span>
         </div>`;
-    }).join("");
+  }
 
-    updateStaffSelectionBar();
+  function toggleStaffGroup(enc) {
+    const name = decodeURIComponent(enc);
+    const el = document.getElementById("sgrp-" + enc);
+    const nowOpen = !(el && el.classList.contains("open"));
+    if (nowOpen) staffOpenGroups.add(name); else staffOpenGroups.delete(name);
+    if (el) el.classList.toggle("open", nowOpen);
   }
 
   function toggleStaffToolSelect(encKey) {
@@ -1822,10 +1881,11 @@
       const selectedItems = getSelectedStaffItems();
       const firstTool     = selectedItems[0];
       const actionsContainer = document.getElementById("staff-selection-actions");
+      const allRequested  = selectedItems.length && selectedItems.every(t => t.status === "Requested");
 
-      if (firstTool && firstTool.status === "Available") {
+      if (firstTool && firstTool.status !== "Checked Out" && !allRequested) {
         actionsContainer.innerHTML = `<button class="selection-bar-btn" onclick="openStaffBatchActionModal('checkOut')">Check Out</button>`;
-      } else if (firstTool && firstTool.status === "Requested") {
+      } else if (firstTool && allRequested) {
         actionsContainer.innerHTML = `
           <button class="selection-bar-btn btn-danger-bar" onclick="openStaffBatchActionModal('cancel')">Cancel Request</button>
           <button class="selection-bar-btn" onclick="openStaffBatchActionModal('checkOut')">Check Out</button>
@@ -1855,7 +1915,7 @@
     const selectedItems = getSelectedStaffItems();
     if (!selectedItems.length) return;
 
-    const firstItem   = selectedItems[0];
+    const firstItem   = selectedItems.find(t => t.status !== "Available") || selectedItems[0];
     const defaultName = firstItem.name || firstItem.checkedOutBy || "";
 
     const titleEl    = document.getElementById("staff-action-title");
@@ -1893,7 +1953,7 @@
           <div style="background:#f8f9fa; padding:10px 12px; border-radius:8px; display:flex; justify-content:space-between; align-items:center; gap:8px;">
             <div style="min-width:0; flex:1;">
               <div style="font-weight:600; font-size:14px; color:#1a1a2e;">${esc(item.toolName)}</div>
-              <div style="font-size:11px; color:#888;">Orig Requested ID: ${esc(item.toolId)}</div>
+              <div style="font-size:11px; color:#888;">${item.status === "Requested" ? "Requested ID: " + esc(item.toolId) + (item.name ? " · " + esc(item.name) : "") : "Selected ID: " + esc(item.toolId)}</div>
             </div>
             <select class="staff-tool-id-select" data-orig-id="${esc(item.toolId)}" data-tool-name="${esc(item.toolName)}" style="padding:6px 8px; border-radius:6px; border:1.5px solid #e0e0e0; font-size:13px; font-weight:600; background:#fff; color:#1a1a2e;">
               ${optionsHtml}
@@ -1967,6 +2027,14 @@
     if (savedAction !== "cancel" && !name) {
       alert("Please enter a name.");
       return;
+    }
+
+    if (savedAction === "checkOut") {
+      const picked = [...document.querySelectorAll(".staff-tool-id-select")].map(d => d.dataset.toolName + "|||" + d.value);
+      if (new Set(picked).size !== picked.length) {
+        alert("Two lines are set to the same Tool ID. Pick a different ID for one of them.");
+        return;
+      }
     }
 
     isSubmitting = true;
